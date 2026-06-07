@@ -21,6 +21,9 @@ fun main() {
     // cohérence des .proto avec les octets reçus. Activé via -Pdiagnostic (Gradle)
     // ou -Dbingobreed.diagnostic=true.
     val diagnostic = System.getProperty("bingobreed.diagnostic") == "true"
+    // protobuf-java (TextFormat) loggue en java.util.logging des "Invalid key for map field"
+    // au tri des clés de map d'un DynamicMessage : bruit inoffensif, on le coupe.
+    java.util.logging.Logger.getLogger("com.google.protobuf").level = java.util.logging.Level.WARNING
     log.info("BingoBreed démarré — initialisation du sniffer… (diagnostic={})", diagnostic)
 
     val sniffer = SnifferEngine()

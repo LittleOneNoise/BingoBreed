@@ -1903,3 +1903,42 @@ message PlaySpellScriptEvent {
 	int32 scriptId = 1;
 }
 
+// ===========================================================================
+// ÉLEVAGE (Dofus 3) — DOCUMENTATION des messages obfusqués (codes protodec).
+// Vrais noms reconstruits par sniffing. Numéros de champ valides pour le patch
+// observé — à revérifier après MAJ. Sert de RÉFÉRENCE (pierre de Rosette),
+// PAS de couche de parsing : le décodage runtime passe par output.proto +
+// DynamicMessage (cf. PaddockMapper). Mapping des codes :
+//   hiy = état complet d'un enclos (fdrt -> him)
+//   hle = mise à jour d'un enclos (fdzc.fdyw -> him)
+//   hhv = étable complète ; hof = équipements rapides (presets de stuff)
+// ===========================================================================
+
+// hhx — jauge de carburant d'enclos
+message BreedingFuelGauge {
+	int32 value = 2;     // fdov (0..100000)
+	int32 element = 3;   // fdow (enum hhc, 0..5)
+}
+
+// hll — jauge de monture (amour / maturité / endurance, type à confirmer)
+message BreedingMountGauge {
+	int32 value = 1;     // fdzx
+	int32 type = 2;      // fdzy (enum hhd, 0..2)
+}
+
+// hlo — monture (en enclos ou étable)
+message BreedingMount {
+	optional string name = 2;                 // feaj (nom personnalisé)
+	int32 level = 5;                          // fean (à confirmer)
+	int32 experience = 6;                     // feao (à confirmer)
+	int32 serenity = 10;                      // feas (à confirmer, signé)
+	repeated BreedingMountGauge gauges = 13;  // feav
+}
+
+// him — contenu d'un enclos
+message BreedingPaddock {
+	repeated int32 active_elements = 1;          // fdql (max 2 activées, enum hhc)
+	repeated BreedingFuelGauge fuel_gauges = 2;  // fdqm (6 jauges)
+	map<string, BreedingMount> mounts = 3;       // fdqn
+}
+
