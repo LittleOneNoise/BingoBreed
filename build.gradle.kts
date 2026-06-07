@@ -6,3 +6,8 @@ plugins {
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
 }
+
+allprojects {
+    group = "fr.lilone.bingobreed"
+    version = providers.gradleProperty("appVersion").get()
+}
