@@ -35,3 +35,4 @@ plugins {
 include(":desktopApp")
 include(":shared")
 include(":proto")
+include(":proto-raw")

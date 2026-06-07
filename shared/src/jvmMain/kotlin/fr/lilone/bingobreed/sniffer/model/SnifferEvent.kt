@@ -24,6 +24,17 @@ sealed interface SnifferEvent {
     /** Une frame réassemblée sur le flux d'un serveur de jeu donné. */
     data class GameFrame(val host: String, val frame: DofusFrame) : SnifferEvent
 
+    /**
+     * Un message de jeu décodé : [message] = Any extrait de l'enveloppe (toujours
+     * présent), [dynamic] = décodage structuré via descripteur (null si code
+     * inconnu du descripteur protodec).
+     */
+    data class GameMessage(
+        val host: String,
+        val message: DecodedGameAny,
+        val dynamic: com.google.protobuf.Message?,
+    ) : SnifferEvent
+
     /** Erreur non fatale d'un listener (l'engine continue grâce au SupervisorJob). */
     data class Failure(val context: String, val cause: Throwable) : SnifferEvent
 }

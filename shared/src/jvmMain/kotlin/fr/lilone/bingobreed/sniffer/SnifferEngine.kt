@@ -12,7 +12,11 @@ import fr.lilone.bingobreed.sniffer.net.HostResolver
 import fr.lilone.bingobreed.sniffer.net.NetworkInterfaceDetector
 import fr.lilone.bingobreed.sniffer.parser.ConnectionMessageInterpreter
 import fr.lilone.bingobreed.sniffer.parser.GameServerSelection
+import fr.lilone.bingobreed.sniffer.parser.DescriptorRegistry
+import fr.lilone.bingobreed.sniffer.parser.GameAnyExtractor
+import fr.lilone.bingobreed.sniffer.parser.GameMessageDecoder
 import fr.lilone.bingobreed.sniffer.parser.LoginConnectionMessageInterpreter
+import fr.lilone.bingobreed.sniffer.parser.TypeUrlRegistry
 import fr.lilone.bingobreed.sniffer.util.NpcapNativeSetup
 import fr.lilone.bingobreed.sniffer.util.logger
 import kotlinx.coroutines.CoroutineName
@@ -50,6 +54,10 @@ class SnifferEngine(
     private val hostResolver: HostResolver = HostResolver(),
     private val captureFactory: PacketCaptureFactory = PacketCaptureFactory(),
     private val interpreter: ConnectionMessageInterpreter = LoginConnectionMessageInterpreter(),
+    private val typeUrlRegistry: TypeUrlRegistry = TypeUrlRegistry(),
+    private val gameAnyExtractor: GameAnyExtractor = GameAnyExtractor(),
+    descriptorRegistry: DescriptorRegistry = DescriptorRegistry.loadFromClasspath(),
+    private val gameMessageDecoder: GameMessageDecoder = GameMessageDecoder(descriptorRegistry),
 ) {
     private val log = logger()
     private val supervisor = SupervisorJob()
@@ -135,6 +143,16 @@ class SnifferEngine(
                     val reassembler = TcpStreamReassembler(endpoints)
                     GameServerListener(capture, reassembler).listen().collect { frame ->
                         _events.emit(SnifferEvent.GameFrame(selection.host, frame))
+                        gameAnyExtractor.extract(frame, typeUrlRegistry)?.let { decoded ->
+                            val dynamic = gameMessageDecoder.decode(decoded)
+                            log.debug(
+                                "[GAME {}] {} {} ({}b){} {}",
+                                selection.host, decoded.direction, decoded.typeUrl, decoded.value.size,
+                                decoded.knownName?.let { " = $it" } ?: "",
+                                if (dynamic != null) "✓descripteur" else "(non résolu)",
+                            )
+                            _events.emit(SnifferEvent.GameMessage(selection.host, decoded, dynamic))
+                        }
                     }
                 }.onFailure { fail("game-listener-${selection.host}", it) }
             }.also { job ->

@@ -26,6 +26,7 @@ kotlin {
         jvmMain.dependencies {
             // Sniffer réseau (JVM uniquement)
             implementation(projects.proto)
+            implementation(projects.protoRaw) // FileDescriptorSet d'output.proto (DynamicMessage)
             implementation(libs.kotlinx.coroutinesCore)
             implementation(libs.kotlinx.serializationJson)
             implementation(libs.pcap4j.core)

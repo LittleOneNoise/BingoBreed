@@ -1,7 +1,10 @@
 package fr.lilone.bingobreed.sniffer.diagnostics
 
 import com.chatofus.proto.login_message.LoginMessage
+import com.google.protobuf.Message
+import fr.lilone.bingobreed.sniffer.model.DecodedGameAny
 import fr.lilone.bingobreed.sniffer.model.DofusFrame
+import fr.lilone.bingobreed.sniffer.model.SnifferEvent
 
 /**
  * Produit un rapport lisible d'une [DofusFrame] pour le mode diagnostic :
@@ -24,6 +27,24 @@ object ProtobufDiagnostics {
         appendLine(RawProtobufDumper.dump(frame.protobuf).prependIndent("  "))
         appendLine("[parse typé LoginMessage]")
         append(loginTyped(frame).prependIndent("  "))
+    }
+
+    /** Rapport d'un event de message de jeu (évite d'exposer protobuf aux consommateurs). */
+    fun reportGameMessage(event: SnifferEvent.GameMessage): String =
+        reportGameMessage(event.message, event.dynamic)
+
+    /**
+     * Rapport d'un message de jeu : structure décodée via descripteur
+     * ([DynamicMessage], noms de champs obfusqués mais types/valeurs corrects),
+     * ou décodage brut si le code est inconnu du descripteur.
+     */
+    fun reportGameMessage(message: DecodedGameAny, dynamic: Message?): String = buildString {
+        val source = if (dynamic != null) "descripteur" else "brut"
+        val id = message.requestId?.let { " id=$it" } ?: ""
+        appendLine("── ${message.direction} ${message.typeUrl} [$source]$id")
+        val body = dynamic?.toString()?.ifBlank { "(message vide)" }
+            ?: RawProtobufDumper.dump(message.value)
+        append(body.prependIndent("  "))
     }
 
     private fun loginTyped(frame: DofusFrame): String = try {

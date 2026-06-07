@@ -3,6 +3,7 @@ package fr.lilone.bingobreed
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import fr.lilone.bingobreed.sniffer.SnifferEngine
+import fr.lilone.bingobreed.sniffer.diagnostics.CodeCensus
 import fr.lilone.bingobreed.sniffer.diagnostics.ProtobufDiagnostics
 import fr.lilone.bingobreed.sniffer.model.SnifferEvent
 import kotlinx.coroutines.CoroutineScope
@@ -24,16 +25,22 @@ fun main() {
 
     val sniffer = SnifferEngine()
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val census = CodeCensus()
 
     if (diagnostic) {
-        log.info("Mode DIAGNOSTIC actif — chaque frame sera dumpée (brut + typé)")
+        log.info("Mode DIAGNOSTIC actif — structure décodée + détection des nouveaux codes")
         appScope.launch {
             sniffer.events.collect { event ->
                 when (event) {
                     is SnifferEvent.ConnectionFrame ->
                         diagLog.info("\n{}", ProtobufDiagnostics.reportConnection(event.frame))
-                    is SnifferEvent.GameFrame ->
-                        diagLog.info("\n{}", ProtobufDiagnostics.reportRaw(event.frame))
+                    is SnifferEvent.GameMessage -> {
+                        val isNew = census.record(event.message.typeUrl)
+                        val report = ProtobufDiagnostics.reportGameMessage(event)
+                        // Nouveaux codes en évidence (INFO), répétitions en DEBUG.
+                        if (isNew) diagLog.info("\n🆕 NOUVEAU CODE\n{}", report)
+                        else diagLog.debug("\n{}", report)
+                    }
                     else -> Unit
                 }
             }
@@ -47,6 +54,9 @@ fun main() {
     application {
         Window(
             onCloseRequest = {
+                if (diagnostic) {
+                    diagLog.info("Récap des codes vus ({}):\n{}", census.distinctCount, census.summary())
+                }
                 appScope.cancel()
                 sniffer.stop()
                 exitApplication()
