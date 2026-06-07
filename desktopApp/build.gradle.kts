@@ -19,6 +19,11 @@ compose.desktop {
     application {
         mainClass = "fr.lilone.bingobreed.MainKt"
 
+        // Mode diagnostic : `./gradlew :desktopApp:run -Pdiagnostic`
+        if (project.hasProperty("diagnostic")) {
+            jvmArgs += "-Dbingobreed.diagnostic=true"
+        }
+
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "fr.lilone.bingobreed"

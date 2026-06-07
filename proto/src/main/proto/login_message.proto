@@ -1,0 +1,300 @@
+syntax = "proto3";
+
+package proto.connection;
+
+option java_package = "com.chatofus.proto.login_message";
+option java_outer_classname = "LoginMessageProto";
+option java_multiple_files = true;
+
+// bpsa
+message LoginMessage {
+	oneof content {
+		Request request = 1;
+		Response response = 2;
+		Event event = 3;
+	}
+}
+
+// bpsc ?
+message Request {
+	string uuid = 1;
+	oneof content {
+		Ping ping = 2;
+		IdentificationRequest identification = 3;
+		SelectServerRequest selectServer = 4;
+		ForceAccountRequest forceAccount = 5;
+		ReleaseAccountRequest releaseAccount = 6;
+		FriendListRequest friend_list_request = 7;
+		AcquaintanceServersRequest acquaintance_servers_request = 8;
+	}
+}
+
+// bpse ?
+message Response {
+	string uuid = 1;
+	oneof content {
+		Pong pong = 2;
+		IdentificationResponse identification = 3;
+		SelectServerResponse selectServer = 4;
+		ForceAccountResponse forceAccount = 5;
+		FriendListResponse friend_list = 6;
+		AcquaintanceServersResponse acquaintance_servers_response = 7;
+	}
+}
+
+// bpsg ?
+message Event {
+	oneof content {
+		Server server = 1;
+		UpdateServerEvent update_server_event = 2;
+	}
+}
+
+message Ping {
+}
+
+message Pong {
+}
+
+message UpdateServerEvent {
+	ServerInformation serverInformation = 1;
+}
+
+message IdentificationRequest {
+	string device_identifier = 1;
+	string client_version = 5;
+	oneof identification_type {
+		TokenRequest tokenRequest = 3;
+		LoginRequest loginRequest = 4;
+	}
+}
+
+message TokenRequest {
+	string token = 1;
+	optional TokenRequest.Shield shield = 2;
+	message Shield {
+		int64 certificateId = 1;
+		string certificateHash = 2;
+	}
+
+}
+
+message LoginRequest {
+	string login = 1;
+}
+
+message IdentificationResponse {
+	oneof result {
+		IdentificationResponse.Success success = 1;
+		IdentificationResponse.Error error = 2;
+	}
+	message Success {
+		int64 account_id = 1;
+		string account_nickname = 2;
+		string account_tag = 3;
+		ServerList server_list = 4;
+		string subscription_end_date = 5;
+		IdentificationResponse.Success.Rights rights = 6;
+		optional int32 fight_reconnection_server_id = 7;
+		message Rights {
+			bool show_force_account = 1;
+			bool show_console = 2;
+			bool unlimited_access = 3;
+			bool infinite_subscription = 4;
+			bool report = 5;
+		}
+
+	}
+
+	message Error {
+		IdentificationResponse.Error.Reason reason = 1;
+		optional string ban_end_date = 2;
+		optional string required_version = 3;
+		enum Reason {
+			UNKNOWN_AUTH_ERROR = 0;
+			ALREADY_CONNECTED = 1;
+			OTP_TIMEOUT = 2;
+			BANNED = 3;
+			INVALID_SHIELD_CERTIFICATE = 4;
+			LOCKED = 5;
+			CREDENTIALS_RESET = 6;
+			WRONG_CREDENTIALS = 7;
+			EMAIL_UNVALIDATED = 8;
+			ANONYMOUS_IP_FORBIDDEN = 9;
+			NICKNAME_REGISTRATION = 10;
+			UNAUTHORIZED = 11;
+			INVALID_CLIENT_VERSION = 12;
+			OUTDATED_CLIENT_VERSION = 13;
+		}
+
+	}
+
+}
+
+// bpsz
+message SelectServerRequest {
+	int32 server = 1;
+}
+
+// bpte
+message SelectServerResponse {
+	oneof result {
+		SelectServerResponse.Success success = 1;
+		SelectServerResponse.Error error = 2;
+	}
+	message Success {
+		string token = 1;
+		string host = 2;
+		repeated int32 ports = 3;
+	}
+
+	enum Error {
+		REFUSED = 0;
+		SUBSCRIBER_ONLY = 1;
+		SINGLE_ACCOUNT_VERIFIED_ONLY = 2;
+		MAINTENANCE = 3;
+	}
+
+}
+
+message ServerList {
+	repeated ServerInformation servers = 1;
+	int32 max_slot_by_type = 2;
+}
+
+message ServerInformation {
+	Server server = 1;
+	ServerInformation.Accessibility accessibility = 2;
+	repeated CharacterInformation characters = 3;
+	enum Accessibility {
+		ACCESSIBLE = 0;
+		SUBSCRIBE_RESTRICTION = 1;
+		MONO_ACCOUNT_RESTRICTION = 2;
+		UNKNOWN = 3;
+	}
+
+}
+
+message Server {
+	int32 id = 1;
+	Server.Status status = 2;
+	bool mono_account = 3;
+	enum Status {
+		ONLINE = 0;
+		MAINTENANCE = 1;
+	}
+
+}
+
+message ForceAccountRequest {
+	int64 account_id = 1;
+}
+
+message ForceAccountResponse {
+	oneof content {
+		ForceAccountStatus success = 2;
+		ForceAccountError error = 3;
+	}
+}
+
+message ForceAccountStatus {
+	bool is_forced = 1;
+	int64 forced_account_id = 2;
+	string forced_account_nickname = 3;
+	string forced_account_tag = 4;
+	ServerList server_list = 5;
+}
+
+message ForceAccountError {
+}
+
+message ReleaseAccountRequest {
+}
+
+message CharacterInformation {
+	string name = 1;
+	CharacterInformation.Breed breed = 2;
+	CharacterInformation.Gender gender = 3;
+	int32 level = 4;
+	string last_connection_date = 5;
+	enum Gender {
+		MALE = 0;
+		FEMALE = 1;
+	}
+
+	enum Breed {
+		FECA = 0;
+		OSAMODAS = 1;
+		ENUTROF = 2;
+		SRAM = 3;
+		XELOR = 4;
+		ECAFLIP = 5;
+		ENIRIPSA = 6;
+		IOP = 7;
+		CRA = 8;
+		SADIDA = 9;
+		SACRIER = 10;
+		PANDAWA = 11;
+		ROGUE = 12;
+		MASQUERAIDER = 13;
+		FOGGERNAUTS = 14;
+		ELIOTROPE = 15;
+		HUPPERMAGE = 16;
+		OUGINAK = 17;
+		FORGELANCE = 18;
+	}
+
+}
+
+message FriendListRequest {
+}
+
+message FriendListResponse {
+	oneof result {
+		FriendListResponse.FriendList friends = 1;
+		FriendListResponse.Error error = 2;
+	}
+	message FriendList {
+		repeated FriendListResponse.FriendList.Friend friends = 1;
+		message Friend {
+			string account_name = 1;
+			string account_tag = 2;
+			repeated int32 servers = 3;
+		}
+
+	}
+
+	enum Error {
+		UNKNOWN = 0;
+		FLOODING = 1;
+	}
+
+}
+
+message AcquaintanceServersRequest {
+	string name = 1;
+	string tag = 2;
+}
+
+message AcquaintanceServersResponse {
+	oneof result {
+		AcquaintanceServersResponse.Servers servers = 1;
+		AcquaintanceServersResponse.Error error = 2;
+	}
+	message Servers {
+		repeated int32 servers = 1;
+	}
+
+	message Error {
+		AcquaintanceServersResponse.Error.Reason reason = 1;
+		enum Reason {
+			UNKNOWN = 0;
+			NO_RESULT = 1;
+			FLOOD = 2;
+			INVALID_ACCOUNT = 3;
+		}
+
+	}
+
+}
+

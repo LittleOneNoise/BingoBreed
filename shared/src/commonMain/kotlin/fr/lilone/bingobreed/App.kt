@@ -16,8 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import org.jetbrains.compose.resources.painterResource
 
-import bingobreed.shared.generated.resources.Res
-import bingobreed.shared.generated.resources.compose_multiplatform
+import fr.lilone.bingobreed.shared.generated.resources.Res
+import fr.lilone.bingobreed.shared.generated.resources.compose_multiplatform
 
 @Composable
 @Preview

@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -21,6 +22,16 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+        }
+        jvmMain.dependencies {
+            // Sniffer réseau (JVM uniquement)
+            implementation(projects.proto)
+            implementation(libs.kotlinx.coroutinesCore)
+            implementation(libs.kotlinx.serializationJson)
+            implementation(libs.pcap4j.core)
+            implementation(libs.pcap4j.packetfactoryStatic)
+            api(libs.slf4j.api)
+            implementation(libs.logback.classic)
         }
     }
 }
