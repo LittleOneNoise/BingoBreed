@@ -28,24 +28,69 @@ data class FuelGauge(
 /**
  * Une monture telle que vue dans le résumé d'enclos (`hlo`).
  *
- * Note : génération, couleur, fertilité et généalogie ne figurent PAS dans ce
- * résumé — elles proviendront d'un message de détail (au clic sur la monture),
- * à identifier ultérieurement.
+ * Note : **génération et généalogie** ne figurent PAS dans ce résumé — elles
+ * proviennent d'un message de détail (au clic sur la monture), à identifier.
+ * Voir `parser/breeding/README.md` pour le mapping wire et la ré-identification
+ * (les noms de champ obfusqués changent à chaque patch).
  */
 data class Mount(
     val uuid: String,
-    /** Nom personnalisé, si défini (champ feaj). */
+    /** Nom personnalisé, si défini. */
     val name: String?,
-    /** Niveau (champ fean — confirmé). */
+    /** Niveau (confirmé). */
     val level: Int,
-    /** Expérience (champ feao — confirmé). */
+    /** Expérience (confirmé). */
     val experience: Int,
-    /** Sérénité, signée (champ feas — confirmé). */
+    /** Sérénité, signée (confirmé). Renseignée même si stérile (l'UI la masque alors). */
     val serenity: Int,
-    /** Jauges amour/maturité/endurance (champ feav). */
+    /** Sexe (confirmé). */
+    val sex: Sex,
+    /** True si la monture est stérile (confirmé). */
+    val sterile: Boolean,
+    /** État de fertilité — **dérivé client** de [sterile] + [gauges] (pas un champ réseau). */
+    val fertility: Fertility,
+    /** Id d'apparence/robe (observé ; sémantique exacte à confirmer). */
+    val appearanceId: Int,
+    /** Couleurs de la monture, null si robe de base (champ optionnel). */
+    val colors: MountColors?,
+    /** Jauges amour/maturité/endurance. */
     val gauges: List<MountGauge>,
-    /** Effets/bonus (champ fear) : PM, puissance, fuite… */
+    /** Effets/bonus : PM, puissance, fuite, résistances… */
     val effects: List<MountEffect>,
+)
+
+/** Sexe d'une monture (champ wire `feau` : true = mâle). */
+enum class Sex { MALE, FEMALE }
+
+/**
+ * État de fertilité — **calcul côté client**, ce n'est pas un champ réseau :
+ *  - stérile → [STERILE] ;
+ *  - sinon toutes les jauges au max → [FECONDE] (prête à se reproduire) ;
+ *  - sinon → [FERTILE].
+ *
+ * Preuve : stérile et féconde ont toutes deux les jauges au max ; seul le flag
+ * stérile les départage.
+ */
+enum class Fertility {
+    FERTILE, FECONDE, STERILE;
+
+    companion object {
+        /** Valeur max d'une jauge de monture (amour/maturité/endurance). */
+        const val GAUGE_MAX = 20000
+
+        fun of(sterile: Boolean, gauges: List<MountGauge>): Fertility = when {
+            sterile -> STERILE
+            gauges.isNotEmpty() && gauges.all { it.value >= GAUGE_MAX } -> FECONDE
+            else -> FERTILE
+        }
+    }
+}
+
+/** Couleurs d'une monture (2 teintes utilisées ; 3ᵉ slot observé à 0). */
+data class MountColors(
+    val primary: Int,
+    val secondary: Int,
+    val tertiary: Int,
 )
 
 /** Une jauge de monture. */

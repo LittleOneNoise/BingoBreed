@@ -2,12 +2,15 @@ package fr.lilone.bingobreed.sniffer
 
 import com.google.protobuf.Descriptors.Descriptor
 import com.google.protobuf.DynamicMessage
+import fr.lilone.bingobreed.sniffer.model.breeding.Fertility
 import fr.lilone.bingobreed.sniffer.model.breeding.MountGauge
+import fr.lilone.bingobreed.sniffer.model.breeding.Sex
 import fr.lilone.bingobreed.sniffer.parser.DescriptorRegistry
 import fr.lilone.bingobreed.sniffer.parser.breeding.PaddockMapper
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 /**
  * Reconstruit l'échantillon réel "enclos4monturegen4" (relevé en jeu) à partir
@@ -84,5 +87,20 @@ class PaddockMapperTest {
         assertEquals(49, m.serenity)
         assertEquals(16180, m.gauges.first { it.type == MountGauge.TYPE_LOVE }.value)
         assertEquals(10, m.effects.first { it.effectId == 138 }.value)
+        // Champs ajoutés post-refonte : défauts du sample (♀, fertile, sans robe).
+        assertEquals(Sex.FEMALE, m.sex)
+        assertEquals(false, m.sterile)
+        assertEquals(Fertility.FERTILE, m.fertility)
+        assertNull(m.colors)
+    }
+
+    @Test
+    fun `derive la fertilite cote client`() {
+        val maxed = listOf(MountGauge(0, 20000), MountGauge(1, 20000), MountGauge(2, 20000))
+        val partial = listOf(MountGauge(0, 80), MountGauge(1, 20000), MountGauge(2, 0))
+        // Stérile prime, même jauges au max.
+        assertEquals(Fertility.STERILE, Fertility.of(sterile = true, maxed))
+        assertEquals(Fertility.FECONDE, Fertility.of(sterile = false, maxed))
+        assertEquals(Fertility.FERTILE, Fertility.of(sterile = false, partial))
     }
 }

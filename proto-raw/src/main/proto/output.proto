@@ -1761,13 +1761,14 @@ enum hhb {
   HHB_DXNQ = 5;
 }
 
+// Les 6 jauges de carburant d'un enclos
 enum hhc {
-  HHC_DXNR = 0;
-  HHC_DXNS = 1;
-  HHC_DXNT = 2;
-  HHC_DXNU = 3;
-  HHC_DXNV = 4;
-  HHC_DXNW = 5;
+  HHC_DXNR = 0; // jauge baffeur (nerf sérénité)
+  HHC_DXNS = 1; // jauge caresseur (boost sérénité)
+  HHC_DXNT = 2; // jauge foudroyeur (endurance)
+  HHC_DXNU = 3; // jauge abreuvoir (maturité)
+  HHC_DXNV = 4; // jauge dragofesse (amour)
+  HHC_DXNW = 5; // jauge mangeoire (xp)
 }
 
 enum hhd {
@@ -1781,6 +1782,8 @@ enum hhe {
   HHE_DXOB = 1;
 }
 
+// Flag du push de contenu d'enclos (hle.hlc.fdyv) : DXOC=0 / DXOD=1,
+// probablement partiel vs complet (replace). À l'ouverture d'un enclos : DXOD.
 enum hhf {
   HHF_DXOC = 0;
   HHF_DXOD = 1;
@@ -2157,10 +2160,12 @@ message hkr {
   }
 }
 
+// C→S (Event, id=-1) : SÉLECTIONNER un enclos. Établit le « contexte enclos »
+// que hhw/hki (activer/désactiver jauge) ciblent ensuite. Réponse = hle (contenu).
 message hkv {
   hkt fdxp = 1;
   oneof fdxt {
-    int32 fdxq = 2;
+    int32 fdxq = 2; // index de l'enclos sélectionné (1..6)
     hkt fdxs = 3;
   }
   message hkt {
@@ -2189,6 +2194,7 @@ message hkz {
   }
 }
 
+// S→C : push du contenu d'un enclos (à l'ouverture = complet, sinon mise à jour).
 message hle {
   oneof fdzd {
     hlb fdza = 1;
@@ -2200,8 +2206,8 @@ message hle {
     HLB_DYJE = 2;
   }
   message hlc {
-    hhf fdyv = 1;
-    him fdyw = 2;
+    hhf fdyv = 1; // flag partiel/complet (cf. hhf)
+    him fdyw = 2; // contenu de l'enclos (jauges + montures)
   }
 }
 
@@ -2227,20 +2233,25 @@ message hlj {
   repeated int32 fdzt = 2;
 }
 
+// Une monture (résumé d'enclos). Génération + généalogie NON présents ici
+// (détail au clic) — aucun champ ne vaut la génération.
 message hlo {
-  bool feai = 1;
-  optional string feaj = 2;
-  repeated hhb feal = 3;
-  int32 feam = 4;
-  int32 fean = 5;
-  int32 feao = 6;
-  hlm feap = 7;
-  hlk feaq = 8;
-  repeated kiv fear = 9;
-  int32 feas = 10;
-  bool feat = 11;
-  bool feau = 12;
-  repeated hll feav = 13;
+  bool feai = 1;            // ? (jamais observé true)
+  optional string feaj = 2; // nom (confirmé)
+  repeated hhb feal = 3;    // ?
+  int32 feam = 4;           // id d'apparence/robe (96 amande, 97 ivoire, 101 doré+pourpre)
+  int32 fean = 5;           // niveau (confirmé)
+  int32 feao = 6;           // xp (confirmé)
+  hlm feap = 7;             // couleurs de la monture (cf. hlm), varie par robe
+  hlk feaq = 8;             // ?
+  repeated kiv fear = 9;    // effets (confirmé)
+  int32 feas = 10;          // sérénité, signée (confirmé). Présente même si stérile,
+                            // mais l'UI l'affiche « indisponible » dans ce cas.
+  bool feat = 11;           // stérile (true=stérile). Confirmé (n=1, à reconfirmer)
+  bool feau = 12;           // sexe mâle (true=mâle, absent=femelle). Confirmé (n=1)
+  repeated hll feav = 13;   // jauges monture amour/maturité/endurance (confirmé)
+  // Couleurs de la monture (2 slots feac/fead, feae inutilisé). Varie par robe :
+  // amande {107,102} ; ivoire {121,118} ; doré+pourpre {97,90}.
   message hlm {
     int32 feac = 1;
     int32 fead = 2;
@@ -2259,10 +2270,12 @@ message hlo {
   }
 }
 
+// C→S (Event, id=-1, envoyé vide) : LISTER les enclos. Réponse = hlq.
 message hlp {
   optional int32 feaz = 1;
 }
 
+// S→C : état des 6 slots d'enclos. febe = map<index(1..6), déverrouillé>.
 message hlq {
   map<int32, bool> febe = 1;
 }
@@ -11228,12 +11241,16 @@ message kii {
   }
 }
 
+// Effet (id Dofus dans fppp). Ids connus : 128=PM, 138=Puissance, 160=Esquive PA,
+// 210=Résistance terre, 752=Fuite. Ids 2819/2821/3829-3835 = métadonnées internes
+// d'élevage (présentes sur toute monture), à distinguer des effets visibles.
 message kiv {
   int32 fppp = 8;
   oneof fpqe {
     kik fppq = 1;
     kit fppr = 2;
-    int32 fpps = 3;
+    int32 fpps = 3; // valeur simple de l'effet
+
     int64 fppu = 4;
     kin fppw = 5;
     kiq fppx = 6;

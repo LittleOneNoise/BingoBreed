@@ -3,11 +3,14 @@ package fr.lilone.bingobreed.sniffer.parser.breeding
 import com.google.protobuf.Descriptors
 import com.google.protobuf.Message
 import fr.lilone.bingobreed.sniffer.model.DecodedGameAny
+import fr.lilone.bingobreed.sniffer.model.breeding.Fertility
 import fr.lilone.bingobreed.sniffer.model.breeding.FuelGauge
 import fr.lilone.bingobreed.sniffer.model.breeding.Mount
+import fr.lilone.bingobreed.sniffer.model.breeding.MountColors
 import fr.lilone.bingobreed.sniffer.model.breeding.MountEffect
 import fr.lilone.bingobreed.sniffer.model.breeding.MountGauge
 import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
+import fr.lilone.bingobreed.sniffer.model.breeding.Sex
 
 /**
  * Transforme le [Message] (DynamicMessage) d'un message d'enclos en [Paddock].
@@ -39,13 +42,23 @@ object PaddockMapper {
         // hhx (jauge carburant) { fdov=2 valeur ; fdow=3 élément (hhc) }
         const val FUEL_VALUE = 2
         const val FUEL_ELEMENT = 3
-        // hlo (monture) { feaj=2 nom ; fean=5 niveau ; feao=6 xp ; fear=9 effets ; feas=10 sérénité ; feav=13 jauges }
+        // hlo (monture) { feam=4 apparence ; feaj=2 nom ; fean=5 niveau ; feao=6 xp ;
+        //   feap=7 couleurs ; fear=9 effets ; feas=10 sérénité ; feat=11 stérile ;
+        //   feau=12 sexe(mâle) ; feav=13 jauges }
+        const val MOUNT_APPEARANCE = 4
         const val MOUNT_NAME = 2
         const val MOUNT_LEVEL = 5
         const val MOUNT_XP = 6
+        const val MOUNT_COLORS = 7
         const val MOUNT_EFFECTS = 9
         const val MOUNT_SERENITY = 10
+        const val MOUNT_STERILE = 11
+        const val MOUNT_SEX = 12
         const val MOUNT_GAUGES = 13
+        // hlm (couleurs) { feac=1 ; fead=2 ; feae=3 }
+        const val COLOR_PRIMARY = 1
+        const val COLOR_SECONDARY = 2
+        const val COLOR_TERTIARY = 3
         // hll (jauge monture) { fdzx=1 valeur ; fdzy=2 type (hhd) }
         const val MGAUGE_VALUE = 1
         const val MGAUGE_TYPE = 2
@@ -85,19 +98,34 @@ object PaddockMapper {
         }.toMap(),
     )
 
-    private fun toMount(uuid: String, m: Message): Mount = Mount(
-        uuid = uuid,
-        name = m.str(F.MOUNT_NAME),
-        level = m.int(F.MOUNT_LEVEL),
-        experience = m.int(F.MOUNT_XP),
-        serenity = m.int(F.MOUNT_SERENITY),
-        gauges = m.messageList(F.MOUNT_GAUGES).map { gauge ->
+    private fun toMount(uuid: String, m: Message): Mount {
+        val gauges = m.messageList(F.MOUNT_GAUGES).map { gauge ->
             MountGauge(type = gauge.enumNumber(F.MGAUGE_TYPE), value = gauge.int(F.MGAUGE_VALUE))
-        },
-        effects = m.messageList(F.MOUNT_EFFECTS).map { effect ->
-            MountEffect(effectId = effect.int(F.EFFECT_ID), value = effect.intOrNull(F.EFFECT_VALUE))
-        },
-    )
+        }
+        val sterile = m.bool(F.MOUNT_STERILE)
+        return Mount(
+            uuid = uuid,
+            name = m.str(F.MOUNT_NAME),
+            level = m.int(F.MOUNT_LEVEL),
+            experience = m.int(F.MOUNT_XP),
+            serenity = m.int(F.MOUNT_SERENITY),
+            sex = if (m.bool(F.MOUNT_SEX)) Sex.MALE else Sex.FEMALE,
+            sterile = sterile,
+            fertility = Fertility.of(sterile, gauges),
+            appearanceId = m.int(F.MOUNT_APPEARANCE),
+            colors = m.msg(F.MOUNT_COLORS)?.let { c ->
+                MountColors(
+                    primary = c.int(F.COLOR_PRIMARY),
+                    secondary = c.int(F.COLOR_SECONDARY),
+                    tertiary = c.int(F.COLOR_TERTIARY),
+                )
+            },
+            gauges = gauges,
+            effects = m.messageList(F.MOUNT_EFFECTS).map { effect ->
+                MountEffect(effectId = effect.int(F.EFFECT_ID), value = effect.intOrNull(F.EFFECT_VALUE))
+            },
+        )
+    }
 
     // --- Helpers de lecture DynamicMessage par numéro de champ ---
 
@@ -121,6 +149,13 @@ object PaddockMapper {
         val f = field(n) ?: return null
         if (f.isRepeated || !hasField(f)) return null
         return (getField(f) as? Number)?.toInt()
+    }
+
+    /** Bool proto3 sans présence : getField renvoie le défaut (false) si absent. */
+    private fun Message.bool(n: Int): Boolean {
+        val f = field(n) ?: return false
+        if (f.isRepeated) return false
+        return (getField(f) as? Boolean) ?: false
     }
 
     private fun Message.str(n: Int): String? {
