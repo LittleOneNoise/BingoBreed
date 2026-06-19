@@ -6,7 +6,6 @@ import fr.lilone.bingobreed.sniffer.model.DecodedGameAny
 import fr.lilone.bingobreed.sniffer.model.breeding.Fertility
 import fr.lilone.bingobreed.sniffer.model.breeding.FuelGauge
 import fr.lilone.bingobreed.sniffer.model.breeding.Mount
-import fr.lilone.bingobreed.sniffer.model.breeding.MountColors
 import fr.lilone.bingobreed.sniffer.model.breeding.MountEffect
 import fr.lilone.bingobreed.sniffer.model.breeding.MountGauge
 import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
@@ -49,16 +48,15 @@ object PaddockMapper {
         const val MOUNT_NAME = 2
         const val MOUNT_LEVEL = 5
         const val MOUNT_XP = 6
-        const val MOUNT_COLORS = 7
+        const val MOUNT_PARENTS = 7 // feap : robes des 2 parents (généalogie)
         const val MOUNT_EFFECTS = 9
         const val MOUNT_SERENITY = 10
         const val MOUNT_STERILE = 11
         const val MOUNT_SEX = 12
         const val MOUNT_GAUGES = 13
-        // hlm (couleurs) { feac=1 ; fead=2 ; feae=3 }
-        const val COLOR_PRIMARY = 1
-        const val COLOR_SECONDARY = 2
-        const val COLOR_TERTIARY = 3
+        // hlm (généalogie) { feac=1 robe parent 1 ; fead=2 robe parent 2 ; feae=3 inutilisé }
+        const val PARENT_1 = 1
+        const val PARENT_2 = 2
         // hll (jauge monture) { fdzx=1 valeur ; fdzy=2 type (hhd) }
         const val MGAUGE_VALUE = 1
         const val MGAUGE_TYPE = 2
@@ -113,13 +111,9 @@ object PaddockMapper {
             sterile = sterile,
             fertility = Fertility.of(sterile, gauges),
             appearanceId = m.int(F.MOUNT_APPEARANCE),
-            colors = m.msg(F.MOUNT_COLORS)?.let { c ->
-                MountColors(
-                    primary = c.int(F.COLOR_PRIMARY),
-                    secondary = c.int(F.COLOR_SECONDARY),
-                    tertiary = c.int(F.COLOR_TERTIARY),
-                )
-            },
+            parents = m.msg(F.MOUNT_PARENTS)?.let { p ->
+                listOfNotNull(p.intOrNull(F.PARENT_1), p.intOrNull(F.PARENT_2))
+            } ?: emptyList(),
             gauges = gauges,
             effects = m.messageList(F.MOUNT_EFFECTS).map { effect ->
                 MountEffect(effectId = effect.int(F.EFFECT_ID), value = effect.intOrNull(F.EFFECT_VALUE))

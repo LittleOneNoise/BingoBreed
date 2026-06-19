@@ -10,7 +10,6 @@ import fr.lilone.bingobreed.sniffer.parser.breeding.PaddockMapper
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 
 /**
  * Reconstruit l'échantillon réel "enclos4monturegen4" (relevé en jeu) à partir
@@ -87,11 +86,11 @@ class PaddockMapperTest {
         assertEquals(49, m.serenity)
         assertEquals(16180, m.gauges.first { it.type == MountGauge.TYPE_LOVE }.value)
         assertEquals(10, m.effects.first { it.effectId == 138 }.value)
-        // Champs ajoutés post-refonte : défauts du sample (♀, fertile, sans robe).
+        // Champs ajoutés post-refonte : défauts du sample (♀, fertile, sans généalogie).
         assertEquals(Sex.FEMALE, m.sex)
         assertEquals(false, m.sterile)
         assertEquals(Fertility.FERTILE, m.fertility)
-        assertNull(m.colors)
+        assertEquals(emptyList(), m.parents)
     }
 
     @Test

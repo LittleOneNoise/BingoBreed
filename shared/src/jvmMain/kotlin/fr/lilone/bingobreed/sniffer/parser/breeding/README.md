@@ -25,10 +25,10 @@ La monture telle qu'on la reconstitue (cf. [`Mount`](../../model/breeding/Paddoc
 | sexe (mâle)         | bool            | confirmé (n=1)|
 | jauges (amour/maturité/endurance) | 3 × (type, valeur 0..20000) | confirmé (amour=type0) |
 | effets              | liste (id, valeur) | confirmé   |
-| id d'apparence/robe | int             | observé       |
-| couleurs            | 2 slots (optionnel) | hypothèse |
+| id d'apparence/robe | int             | observé (encode espèce/gen/couleur) |
+| **généalogie (robes des 2 parents)** | 2 × id de robe | **confirmé via `feap`** (cf. §2) |
 | **fertilité (3 états)** | dérivé        | **calcul client, pas un champ réseau** |
-| génération, généalogie | —            | **absents du résumé** (détail au clic) |
+| génération          | —               | non isolée (corrélée à la robe ?) |
 
 ---
 
@@ -45,7 +45,7 @@ La monture telle qu'on la reconstitue (cf. [`Mount`](../../model/breeding/Paddoc
 | 4        | `feam`       | **id d'apparence/robe**  | 91 / 96 (amande) / 97 (ivoire) / 101 (doré+pourpre) |
 | 5        | `fean`       | **niveau**               | |
 | 6        | `feao`       | **expérience**           | numérateur seul (le `/max` est UI/client) |
-| 7        | `feap`       | **couleurs** (2 slots)   | **optionnel** ; absent = robe de base |
+| 7        | `feap`       | **généalogie** (robes des 2 parents) | sous-msg `hlm` ; absent = robe de base / parents inconnus |
 | 8        | `feaq`       | ?                        | enum (`hlk`) |
 | 9        | `fear`       | **effets**               | voir §4 |
 | 10       | `feas`       | **sérénité** (signée)    | présente **même si stérile** (l'UI l'affiche « indisponible ») |
@@ -54,7 +54,11 @@ La monture telle qu'on la reconstitue (cf. [`Mount`](../../model/breeding/Paddoc
 | 13       | `feav`       | **jauges monture**       | voir §3 |
 
 Sous-messages :
-- **couleurs** (`hlm`) : `feac`=1, `fead`=2, `feae`=3 (3ᵉ inutilisé). Ex. : amande {107,102}, ivoire {121,118}, doré+pourpre {97,90}.
+- **généalogie** (`hlm`) : `feac`=1 (robe parent 1), `fead`=2 (robe parent 2), `feae`=3 inutilisé.
+  Chaque valeur = id de robe dans un **espace propre aux parents, DISTINCT de celui de `feam`**
+  (cf. `model/breeding/Robes.kt` : `PARENT_IDS` vs `OWN_IDS`). Preuve : Turquoise = `98` en robe
+  propre mais `93` en parent ; « Roux et Doré » = `115` en propre, `120` en parent. Ordre
+  `feac`/`fead` = parent 1 / parent 2 ; `feap` constant entre frères/sœurs.
 - **jauge** (`hll`) : valeur=1 (`fdzx`), type=2 (`fdzy`, enum `hhd` 0/1/2).
 - **effet** (`kiv`) : id=8 (`fppp`) ; valeur simple=3 (`fpps`) ; effet complexe=7 (`fppy`).
 
@@ -64,7 +68,7 @@ Sous-messages :
 
 3 jauges, valeurs `0..20000`, indexées par l'enum `hhd` :
 - `type 0` = **amour** (confirmé : bas chez les jeunes, pilote la reproduction)
-- `type 1` / `type 2` = **maturité / endurance** (ordre **non encore départagé**)
+- `type 1` = **maturité** ; `type 2` = **endurance** (confirmé en jeu)
 
 La **fertilité** n'est **pas** un champ réseau — elle se calcule :
 
@@ -113,7 +117,8 @@ d'une monture connue :
 | sexe       | `bool` `true` **uniquement** sur un mâle |
 | jauges     | `repeated` de 3 sous-msg à valeurs `0..20000` ; amour = celui bas chez un jeune |
 | effets     | `repeated` (id, valeur) ; recouper les nombres du tooltip pour fixer les ids |
-| robe/couleurs | varient d'une monture à l'autre **à niveau/gen/sérénité égaux** |
+| robe (`feam`) | varie d'une monture à l'autre **à niveau/gen/sérénité égaux** |
+| généalogie (`feap`) | sous-msg à 2 ids de robe, **identique entre frères/sœurs** (même couple de parents) |
 
 > Astuce : ouvrir un enclos avec **2 montures qui ne diffèrent que d'UN attribut**
 > (sexe, fertilité, robe) isole le champe correspondant. Un **mâle stérile**

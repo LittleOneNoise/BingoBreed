@@ -54,8 +54,14 @@ data class Mount(
     val fertility: Fertility,
     /** Id d'apparence/robe (observé ; sémantique exacte à confirmer). */
     val appearanceId: Int,
-    /** Couleurs de la monture, null si robe de base (champ optionnel). */
-    val colors: MountColors?,
+    /**
+     * **Généalogie** : robes des 2 parents (sous-message `feap`, champ 7 ; `feac`=parent 1,
+     * `fead`=parent 2). Chaque valeur est un id de robe dans un **espace propre aux parents**,
+     * distinct de celui de [appearanceId] (cf. `Robes.PARENT_IDS` vs `Robes.OWN_IDS`).
+     * Déjà présent dans le résumé d'enclos (affiché au survol, sans paquet réseau).
+     * Liste vide si la monture n'a pas de généalogie (robe de base / parents inconnus).
+     */
+    val parents: List<Int>,
     /** Jauges amour/maturité/endurance. */
     val gauges: List<MountGauge>,
     /** Effets/bonus : PM, puissance, fuite, résistances… */
@@ -89,23 +95,16 @@ enum class Fertility {
     }
 }
 
-/** Couleurs d'une monture (2 teintes utilisées ; 3ᵉ slot observé à 0). */
-data class MountColors(
-    val primary: Int,
-    val secondary: Int,
-    val tertiary: Int,
-)
-
 /** Une jauge de monture. */
 data class MountGauge(
-    /** Ordinal du type (enum hhd) : 0 = amour, 1 = endurance, 2 = maturité. */
+    /** Ordinal du type (enum hhd) : 0 = amour, 1 = maturité, 2 = endurance. */
     val type: Int,
     val value: Int,
 ) {
     companion object {
         const val TYPE_LOVE = 0       // HHD_DXNX, confirmé (amour)
-        const val TYPE_ENDURANCE = 1
-        const val TYPE_MATURITY = 2
+        const val TYPE_MATURITY = 1
+        const val TYPE_ENDURANCE = 2
     }
 }
 

@@ -37,6 +37,7 @@ import fr.lilone.bingobreed.sniffer.model.breeding.FuelGauge
 import fr.lilone.bingobreed.sniffer.model.breeding.Mount
 import fr.lilone.bingobreed.sniffer.model.breeding.MountGauge
 import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
+import fr.lilone.bingobreed.sniffer.model.breeding.Robes
 import fr.lilone.bingobreed.sniffer.model.breeding.Sex
 
 /** Vert/orange utilisés pour le statut de version (indépendants du thème). */
@@ -180,15 +181,18 @@ private fun MountCard(mount: Mount) {
             val meta = buildString {
                 append("XP ${mount.experience}")
                 if (!mount.sterile) append("  ·  Sérénité ${mount.serenity}")
-                append("  ·  Robe ${mount.appearanceId}")
+                append("  ·  Robe ${Robes.ownLabel(mount.appearanceId)}")
             }
             Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (mount.parents.isNotEmpty()) {
+                Text(
+                    "Parents : ${mount.parents.joinToString("  ·  ") { Robes.parentLabel(it) }}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             mount.gauges.sortedBy { gaugeRank(it.type) }.forEach { g ->
                 GaugeRow(gaugeLabel(g.type), g.value, Fertility.GAUGE_MAX)
-            }
-            if (mount.effects.isNotEmpty()) {
-                val effects = mount.effects.joinToString(", ") { e -> e.value?.let { "${e.effectId}=$it" } ?: "${e.effectId}" }
-                Text("Effets : $effects", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
