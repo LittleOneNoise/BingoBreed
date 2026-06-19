@@ -8,6 +8,9 @@ import fr.lilone.bingobreed.sniffer.listener.ConnectionServerListener
 import fr.lilone.bingobreed.sniffer.listener.GameServerListener
 import fr.lilone.bingobreed.sniffer.model.ServerEndpoint
 import fr.lilone.bingobreed.sniffer.model.SnifferEvent
+import fr.lilone.bingobreed.sniffer.model.VersionCheck
+import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
+import fr.lilone.bingobreed.sniffer.parser.breeding.PaddockMapper
 import fr.lilone.bingobreed.sniffer.net.HostResolver
 import fr.lilone.bingobreed.sniffer.net.NetworkInterfaceDetector
 import fr.lilone.bingobreed.sniffer.parser.ConnectionMessageInterpreter
@@ -26,8 +29,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.pcap4j.core.PcapNetworkInterface
 import java.util.concurrent.ConcurrentHashMap
@@ -70,6 +76,14 @@ class SnifferEngine(
     /** Flux unique d'événements pour l'UI / les logs. */
     val events: SharedFlow<SnifferEvent> = _events.asSharedFlow()
 
+    private val _versionCheck = MutableStateFlow<VersionCheck?>(null)
+    /** Dernier contrôle d'écart de version (null tant que le bootstrap n'a pas tourné). */
+    val versionCheck: StateFlow<VersionCheck?> = _versionCheck.asStateFlow()
+
+    private val _activePaddock = MutableStateFlow<Paddock?>(null)
+    /** Dernier état d'enclos décodé, pour binding direct par l'UI (null si rien encore vu). */
+    val activePaddock: StateFlow<Paddock?> = _activePaddock.asStateFlow()
+
     /** Listeners de jeu actifs, indexés par host pour éviter les doublons. */
     private val gameJobs = ConcurrentHashMap<String, Job>()
 
@@ -90,6 +104,8 @@ class SnifferEngine(
     }
 
     private suspend fun bootstrap() {
+        checkClientVersion()
+
         log.info("Étape 1/3 — détection de l'interface réseau…")
         val detected = interfaceDetector.detect()
         _events.emit(
@@ -109,6 +125,37 @@ class SnifferEngine(
 
         log.info("Étape 3/3 — écoute serveur de connexion lancée, en attente de la connexion du joueur…")
         launchConnectionListener(detected.nif, connectionEndpoints)
+    }
+
+    /**
+     * Contrôle l'écart entre la version du client Dofus installé et la version de référence
+     * de BingoBreeder. Best-effort : ne bloque jamais le démarrage, mais loggue un warning
+     * et émet l'événement pour que l'UI puisse alerter en cas de désynchronisation du parsing.
+     */
+    private suspend fun checkClientVersion() {
+        val check = configProvider.checkVersion()
+        when (check) {
+            is VersionCheck.UpToDate ->
+                log.info("Version client alignée sur la référence BingoBreeder: {}", check.local)
+            is VersionCheck.ClientAhead ->
+                log.warn(
+                    "Client Dofus plus récent que la référence BingoBreeder ({} > {}) — " +
+                        "parsing/descripteurs potentiellement obsolètes.",
+                    check.local, check.reference,
+                )
+            is VersionCheck.ClientBehind ->
+                log.warn(
+                    "Client Dofus plus ancien que la référence BingoBreeder ({} < {}).",
+                    check.local, check.reference,
+                )
+            is VersionCheck.Unknown ->
+                log.warn(
+                    "Version du client local indéterminée (lu: {}), référence {} — écart non vérifiable.",
+                    check.local ?: "?", check.reference,
+                )
+        }
+        _versionCheck.value = check
+        _events.emit(SnifferEvent.VersionChecked(check))
     }
 
     /** Écoute serveur de connexion : long-lived, réagit aux serveurs de jeu détectés. */
@@ -152,6 +199,11 @@ class SnifferEngine(
                                 if (dynamic != null) "✓descripteur" else "(non résolu)",
                             )
                             _events.emit(SnifferEvent.GameMessage(selection.host, decoded, dynamic))
+
+                            PaddockMapper.fromGameMessage(decoded, dynamic)?.let { paddock ->
+                                _activePaddock.value = paddock
+                                _events.emit(SnifferEvent.PaddockUpdated(selection.host, paddock))
+                            }
                         }
                     }
                 }.onFailure { fail("game-listener-${selection.host}", it) }

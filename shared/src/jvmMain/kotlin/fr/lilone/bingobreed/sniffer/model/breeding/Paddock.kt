@@ -19,7 +19,10 @@ data class Paddock(
 
 /** Une jauge de carburant d'enclos (0..100000). */
 data class FuelGauge(
-    /** Ordinal de l'élément (enum hhc, 0..5) — à nommer (feu/eau/terre/air/…). */
+    /**
+     * Ordinal de l'item de carburant (enum hhc, 0..5), dans l'ordre :
+     * 0 = baffeur, 1 = caresseur, 2 = foudroyeur, 3 = abreuvoir, 4 = dragofesse, 5 = mangeoire.
+     */
     val element: Int,
     /** Valeur de remplissage (0..100000). */
     val value: Int,
@@ -95,12 +98,14 @@ data class MountColors(
 
 /** Une jauge de monture. */
 data class MountGauge(
-    /** Ordinal du type (enum hhd) : 0 = amour (confirmé) ; 1/2 = maturité/endurance (à départager). */
+    /** Ordinal du type (enum hhd) : 0 = amour, 1 = endurance, 2 = maturité. */
     val type: Int,
     val value: Int,
 ) {
     companion object {
-        const val TYPE_LOVE = 0 // HHD_DXNX, confirmé (amour)
+        const val TYPE_LOVE = 0       // HHD_DXNX, confirmé (amour)
+        const val TYPE_ENDURANCE = 1
+        const val TYPE_MATURITY = 2
     }
 }
 

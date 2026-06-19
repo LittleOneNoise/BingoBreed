@@ -6,6 +6,7 @@ import fr.lilone.bingobreed.sniffer.SnifferEngine
 import fr.lilone.bingobreed.sniffer.diagnostics.CodeCensus
 import fr.lilone.bingobreed.sniffer.diagnostics.ProtobufDiagnostics
 import fr.lilone.bingobreed.sniffer.model.SnifferEvent
+import fr.lilone.bingobreed.ui.BingoBreedApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,7 +67,7 @@ fun main() {
             },
             title = "BingoBreed",
         ) {
-            App()
+            BingoBreedApp(sniffer)
         }
     }
 }

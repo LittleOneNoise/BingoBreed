@@ -1,6 +1,9 @@
 package fr.lilone.bingobreed.sniffer.config
 
 import fr.lilone.bingobreed.sniffer.model.ConnectionHost
+import fr.lilone.bingobreed.sniffer.model.DofusClientVersion
+import fr.lilone.bingobreed.sniffer.model.LocalClientInfo
+import fr.lilone.bingobreed.sniffer.model.VersionCheck
 import fr.lilone.bingobreed.sniffer.util.logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,15 +20,16 @@ import java.nio.file.Path
 /**
  * Étape 2 — récupération de la configuration publique de Dofus.
  *
- * On tape sur [configUrl] (par défaut la config dofus3 d'Ankama), on lit le champ
- * `connectionHosts` (tableau de lignes `"name:host:ports"`) et on en déduit les
- * serveurs de connexion à surveiller.
+ * L'URL de config est lue dans le fichier local [VERSION_FILE] (champ `ConfigUrl`), qui
+ * est la source de vérité du client. On y récupère le champ `connectionHosts` (tableau de
+ * lignes `"name:host:ports"`) pour en déduire les serveurs de connexion à surveiller.
  *
- * NB : l'URL est également référencée dans le fichier local [VERSION_FILE]. On la
- * garde codée en dur par défaut, mais [readVersion] permet de la corréler / logger.
+ * [DEFAULT_CONFIG_URL] ne sert que de filet de secours si le fichier est illisible, et
+ * [configUrlOverride] permet de forcer une URL (tests). [checkVersion] compare en plus la
+ * version du client local à [DOFUS_CLIENT_VERSION_REFERENCE].
  */
 class DofusConfigProvider(
-    private val configUrl: String = DEFAULT_CONFIG_URL,
+    private val configUrlOverride: String? = null,
     private val httpClient: HttpClient = HttpClient.newHttpClient(),
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
@@ -33,7 +37,9 @@ class DofusConfigProvider(
 
     /** Lit la config distante et renvoie les serveurs de connexion parsés. */
     suspend fun fetchConnectionHosts(): List<ConnectionHost> = withContext(Dispatchers.IO) {
-        log.info("Récupération config Ankama: {} (version locale: {})", configUrl, readVersion() ?: "?")
+        val info = readClientInfo()
+        val configUrl = configUrlOverride ?: info?.configUrl ?: DEFAULT_CONFIG_URL
+        log.info("Récupération config Ankama: {} (version locale: {})", configUrl, info?.version ?: "?")
         val request = HttpRequest.newBuilder(URI.create(configUrl)).GET().build()
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         check(response.statusCode() in 200..299) {
@@ -45,11 +51,43 @@ class DofusConfigProvider(
             .also { hosts -> log.info("{} serveur(s) de connexion: {}", hosts.size, hosts.map { "${it.host}:${it.preferredPort}" }) }
     }
 
-    /** Contenu brut du fichier de version local, si présent (best-effort, pour log/corrélation). */
-    fun readVersion(path: Path = Path.of(VERSION_FILE)): String? =
-        runCatching { Files.readString(path).trim() }
-            .onFailure { log.warn("Fichier de version introuvable: {}", path) }
-            .getOrNull()
+    /**
+     * Lit et parse le fichier `version` local (format `Clé=Valeur` ligne par ligne) en
+     * [LocalClientInfo]. Best-effort : renvoie `null` si le fichier est illisible.
+     */
+    fun readClientInfo(path: Path = VERSION_FILE): LocalClientInfo? =
+        runCatching {
+            val fields = Files.readAllLines(path).mapNotNull { line ->
+                val sep = line.indexOf('=').takeIf { it > 0 } ?: return@mapNotNull null
+                line.substring(0, sep).trim() to line.substring(sep + 1).trim()
+            }.toMap()
+            LocalClientInfo(
+                version = fields["Version"],
+                buildDate = fields["BuildDate"],
+                configUrl = fields["ConfigUrl"],
+            )
+        }.onFailure { log.warn("Fichier de version illisible: {}", path) }.getOrNull()
+
+    /**
+     * Compare la version du client Dofus installé localement à la
+     * [DOFUS_CLIENT_VERSION_REFERENCE] figée au build de BingoBreeder, et classe l'écart
+     * éventuel.
+     *
+     * Un écart signale que les descripteurs / le parsing embarqués peuvent être
+     * désynchronisés du client réel.
+     */
+    fun checkVersion(path: Path = VERSION_FILE): VersionCheck {
+        val local = readClientInfo(path)?.version
+        val localVersion = local?.let(DofusClientVersion::parse)
+        val reference = DofusClientVersion.parse(DOFUS_CLIENT_VERSION_REFERENCE)
+        return when {
+            local == null || localVersion == null || reference == null ->
+                VersionCheck.Unknown(DOFUS_CLIENT_VERSION_REFERENCE, local)
+            localVersion == reference -> VersionCheck.UpToDate(DOFUS_CLIENT_VERSION_REFERENCE, local)
+            localVersion > reference -> VersionCheck.ClientAhead(DOFUS_CLIENT_VERSION_REFERENCE, local)
+            else -> VersionCheck.ClientBehind(DOFUS_CLIENT_VERSION_REFERENCE, local)
+        }
+    }
 
     @Serializable
     private data class RemoteConfig(
@@ -59,7 +97,23 @@ class DofusConfigProvider(
 
     companion object {
         const val DEFAULT_CONFIG_URL = "https://dofus2.cdn.ankama.com/config/dofus3.json"
-        const val VERSION_FILE =
-            "C:\\Users\\natha\\AppData\\Local\\Ankama\\Dofus-dofus3\\Dofus_Data\\StreamingAssets\\version"
+
+        /**
+         * Version du client Dofus sur laquelle BingoBreeder a été construit à sa release :
+         * référence pour [checkVersion]. À mettre à jour à chaque réalignement des
+         * descripteurs / du parsing protobuf sur une nouvelle version du client.
+         */
+        const val DOFUS_CLIENT_VERSION_REFERENCE = "3.5.17.26"
+
+        /**
+         * Fichier `version` du client, sous le `Dofus_Data` de l'install Ankama. Résolu via
+         * `%LOCALAPPDATA%` pour rester valable quel que soit le compte Windows (Dofus
+         * s'installe toujours sous ce dossier), avec repli sur `%USERPROFILE%`.
+         */
+        val VERSION_FILE: Path = Path.of(
+            System.getenv("LOCALAPPDATA")
+                ?: "${System.getenv("USERPROFILE")}\\AppData\\Local",
+            "Ankama", "Dofus-dofus3", "Dofus_Data", "StreamingAssets", "version",
+        )
     }
 }
