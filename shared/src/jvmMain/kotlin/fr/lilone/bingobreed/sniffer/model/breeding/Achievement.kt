@@ -6,6 +6,14 @@ package fr.lilone.bingobreed.sniffer.model.breeding
  * [fr.lilone.bingobreed.sniffer.parser.breeding.AchievementMapper].
  */
 
+/** Familles de succès d'élevage, pour le regroupement par sous-onglets dans l'UI. */
+enum class AchievementCategory(val label: String) {
+    GENERAL("Élevage général"),
+    DRAGODINDE("Dragodinde"),
+    MULDO("Muldo"),
+    VOLKORNE("Volkorne"),
+}
+
 /** Un succès et ses objectifs. */
 data class Achievement(
     /** Id du succès (champ `ftht`). */

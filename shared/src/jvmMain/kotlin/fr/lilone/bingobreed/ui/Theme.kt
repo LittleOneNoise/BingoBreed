@@ -46,6 +46,9 @@ object BreedColors {
     /** Marron clair pour l'icône d'enclos (barrière en bois), indépendant de l'état de sélection. */
     val fence = Color(0xFFC8A87C)
 
+    /** Jaune or pour l'icône de succès (trophée), indépendant de l'état de sélection. */
+    val gold = Color(0xFFE3B341)
+
     val tier1 = Color(0xFFF85149)
     val tier2 = Color(0xFFD29922)
     val tier3 = Color(0xFF3FB950)

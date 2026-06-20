@@ -1,19 +1,21 @@
 package fr.lilone.bingobreed.sniffer.model.breeding
 
 /**
- * Référence statique des succès d'élevage : id → nom / points / objectifs / enfants.
- * Source : API REST DofusDB (familles Dragodinde / Muldo / Volkorne). Maps codées en dur
- * (cf. [Robes]) : vérifiées à la compilation, sans I/O runtime. À compléter au fil des captures.
+ * Référence statique des succès d'élevage : id → nom / description / points / catégorie /
+ * objectifs / enfants. Source : API REST DofusDB (familles Dragodinde / Muldo / Volkorne).
+ * Maps codées en dur (cf. [Robes]) : vérifiées à la compilation, sans I/O runtime.
  *
  * ⚠️ FICHIER GÉNÉRÉ depuis le dump DofusDB — ne pas éditer à la main.
  *
- * Deux espaces d'ids distincts : [NAMES]/[POINTS]/[CHILDREN] indexent les **succès** (champ
- * réseau `ftht`), [OBJECTIVES] indexe les **objectifs** (champ réseau `fthp`).
+ * Deux espaces d'ids distincts : [NAMES]/[DESCRIPTIONS]/[POINTS]/[CATEGORY]/[CHILDREN] indexent
+ * les **succès** (champ réseau `ftht`), [OBJECTIVES] indexe les **objectifs** (champ `fthp`).
  */
 object AchievementRegistry {
 
     fun name(achievementId: Int): String? = NAMES[achievementId]
+    fun description(achievementId: Int): String? = DESCRIPTIONS[achievementId]
     fun points(achievementId: Int): Int? = POINTS[achievementId]
+    fun category(achievementId: Int): AchievementCategory? = CATEGORY[achievementId]
     fun children(achievementId: Int): List<Int> = CHILDREN[achievementId] ?: emptyList()
     fun objectiveText(objectiveId: Int): String? = OBJECTIVES[objectiveId]
 
@@ -58,6 +60,47 @@ object AchievementRegistry {
         108 to "Sage-femme",
     )
 
+    private val DESCRIPTIONS: Map<Int, String> = mapOf(
+        91 to "Obtenir les succès suivants.",
+        133 to "Obtenir les Succès suivants.",
+        96 to "Obtenir la naissance de toutes les Dragodindes de deuxième génération.",
+        97 to "Obtenir la naissance de toutes les Dragodindes de troisième génération.",
+        98 to "Obtenir la naissance de toutes les Dragodindes de quatrième génération.",
+        99 to "Obtenir la naissance de toutes les Dragodindes de cinquième génération.",
+        100 to "Obtenir la naissance de toutes les Dragodindes de sixième génération.",
+        101 to "Obtenir la naissance de toutes les Dragodindes de septième génération.",
+        130 to "Obtenir la naissance de toutes les Dragodindes de huitième génération.",
+        131 to "Obtenir la naissance de toutes les Dragodindes de neuvième génération.",
+        132 to "Obtenir la naissance de toutes les Dragodindes de dixième génération.",
+        1488 to "Capturer les Muldos.",
+        1497 to "Obtenir les Succès suivants.",
+        1490 to "Obtenir la naissance de tous les Muldos de deuxième génération.",
+        1491 to "Obtenir la naissance de tous les Muldos de troisième génération.",
+        1492 to "Obtenir la naissance de tous les Muldos de quatrième génération.",
+        1493 to "Obtenir la naissance de tous les Muldos de cinquième génération.",
+        1494 to "Obtenir la naissance de tous les Muldos de sixième génération.",
+        1495 to "Obtenir la naissance de tous les Muldo de septième génération.",
+        1496 to "Obtenir la naissance de tous les Muldos de huitième génération.",
+        9013 to "Obtenir la naissance de tous les Muldo de neuvième génération.",
+        9014 to "Obtenir la naissance de tous les Muldos de dixième génération.",
+        9015 to "Capturer les Volkornes.",
+        95 to "Capturer les Dragodindes.",
+        109 to "Faire naître 1000 montures.",
+        1694 to "Obtenir les Succès suivants.",
+        1692 to "Obtenir la naissance de tous les Volkornes de deuxième génération.",
+        1691 to "Obtenir la naissance de tous les Volkornes de troisième génération.",
+        1690 to "Obtenir la naissance de tous les Volkornes de quatrième génération.",
+        1689 to "Obtenir la naissance de tous les Volkornes de cinquième génération.",
+        1688 to "Obtenir la naissance de tous les Volkornes de sixième génération.",
+        1687 to "Obtenir la naissance de tous les Volkornes de septième génération.",
+        1686 to "Obtenir la naissance de tous les Volkornes de huitième génération.",
+        1685 to "Obtenir la naissance de tous les Volkornes de neuvième génération.",
+        1684 to "Obtenir la naissance de tous les Volkornes de dixième génération.",
+        106 to "Faire naître 10 montures.",
+        107 to "Faire naître 1 monture.",
+        108 to "Faire naître 100 montures.",
+    )
+
     private val POINTS: Map<Int, Int> = mapOf(
         91 to 100,
         133 to 50,
@@ -97,6 +140,47 @@ object AchievementRegistry {
         106 to 10,
         107 to 1,
         108 to 20,
+    )
+
+    private val CATEGORY: Map<Int, AchievementCategory> = mapOf(
+        91 to AchievementCategory.GENERAL,
+        133 to AchievementCategory.DRAGODINDE,
+        96 to AchievementCategory.DRAGODINDE,
+        97 to AchievementCategory.DRAGODINDE,
+        98 to AchievementCategory.DRAGODINDE,
+        99 to AchievementCategory.DRAGODINDE,
+        100 to AchievementCategory.DRAGODINDE,
+        101 to AchievementCategory.DRAGODINDE,
+        130 to AchievementCategory.DRAGODINDE,
+        131 to AchievementCategory.DRAGODINDE,
+        132 to AchievementCategory.DRAGODINDE,
+        1488 to AchievementCategory.MULDO,
+        1497 to AchievementCategory.MULDO,
+        1490 to AchievementCategory.MULDO,
+        1491 to AchievementCategory.MULDO,
+        1492 to AchievementCategory.MULDO,
+        1493 to AchievementCategory.MULDO,
+        1494 to AchievementCategory.MULDO,
+        1495 to AchievementCategory.MULDO,
+        1496 to AchievementCategory.MULDO,
+        9013 to AchievementCategory.MULDO,
+        9014 to AchievementCategory.MULDO,
+        9015 to AchievementCategory.VOLKORNE,
+        95 to AchievementCategory.DRAGODINDE,
+        109 to AchievementCategory.GENERAL,
+        1694 to AchievementCategory.VOLKORNE,
+        1692 to AchievementCategory.VOLKORNE,
+        1691 to AchievementCategory.VOLKORNE,
+        1690 to AchievementCategory.VOLKORNE,
+        1689 to AchievementCategory.VOLKORNE,
+        1688 to AchievementCategory.VOLKORNE,
+        1687 to AchievementCategory.VOLKORNE,
+        1686 to AchievementCategory.VOLKORNE,
+        1685 to AchievementCategory.VOLKORNE,
+        1684 to AchievementCategory.VOLKORNE,
+        106 to AchievementCategory.GENERAL,
+        107 to AchievementCategory.GENERAL,
+        108 to AchievementCategory.GENERAL,
     )
 
     private val CHILDREN: Map<Int, List<Int>> = mapOf(

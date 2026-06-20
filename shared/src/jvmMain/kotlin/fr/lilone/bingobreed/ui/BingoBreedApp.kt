@@ -60,7 +60,7 @@ private val StatusWarn = Color(0xFFE3A008)
 private enum class Tab(val label: String, val icon: DrawableResource?, val glyph: String, val tint: Color? = null) {
     ENCLOS("Enclos", Res.drawable.enclos, "🚧", tint = BreedColors.fence),
     ETABLE("Étable", null, "🐴"),
-    SUCCES("Succès", Res.drawable.succes, "🏆"),
+    SUCCES("Succès", Res.drawable.succes, "🏆", tint = BreedColors.gold),
     DEBUG("Debug", null, "🖥"),
 }
 

@@ -2,8 +2,13 @@ package fr.lilone.bingobreed.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,8 +22,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,37 +40,72 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import fr.lilone.bingobreed.sniffer.model.breeding.Achievement
+import fr.lilone.bingobreed.sniffer.model.breeding.AchievementCategory
+import fr.lilone.bingobreed.sniffer.model.breeding.AchievementObjective
 import fr.lilone.bingobreed.sniffer.model.breeding.AchievementRegistry
+
+/** Largeur d'une carte de succès ; les cartes s'écoulent en grille (plusieurs par ligne). */
+private val CARD_WIDTH = 380.dp
+
+/**
+ * Ordre d'affichage calé sur le client Dofus : points croissants, puis succès **terminaux** avant
+ * les succès **méta** (qui regroupent d'autres succès), puis id croissant. Ex. Muldo : les gén. 9-10
+ * (terminales, 50 pts) précèdent « Générations aquatiques » (méta, 50 pts) malgré un id plus grand.
+ */
+private val AchievementOrder: Comparator<Achievement> = compareBy(
+    { AchievementRegistry.points(it.id) ?: Int.MAX_VALUE },
+    { AchievementRegistry.children(it.id).isNotEmpty() },
+    { it.id },
+)
 
 /**
  * Onglet Succès : succès d'élevage du joueur, alimentés par les listes détaillées `lfd`
- * (cf. [fr.lilone.bingobreed.sniffer.parser.breeding.AchievementMapper]). Comme on accumule ce
- * qui défile à l'ouverture des catégories d'élevage in-game, le contenu se remplit au fur et à
- * mesure de la navigation. Faute de base id→nom, les succès sont affichés par id pour l'instant.
+ * (cf. [fr.lilone.bingobreed.sniffer.parser.breeding.AchievementMapper]) et nommés via
+ * [AchievementRegistry]. Sous-onglets par famille ([AchievementCategory]), masquage des succès
+ * validés (activé par défaut). Tout est trié dans l'ordre du client Dofus ([AchievementOrder]).
  */
 @Composable
 fun SuccesScreen(achievements: Map<Int, Achievement>, now: Long, lastGameFrameAt: Long?) {
     if (achievements.isEmpty()) {
         EmptySucces()
-    } else {
-        val all = achievements.values
-        val obtained = all.count { it.obtained }
-        Column(Modifier.fillMaxSize().padding(16.dp)) {
-            SuccesHeader(all.size, obtained, now, lastGameFrameAt)
-            Spacer(Modifier.height(14.dp))
+        return
+    }
+    var category by remember { mutableStateOf(AchievementCategory.GENERAL) }
+    var hideObtained by remember { mutableStateOf(true) }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        SuccesHeader(achievements.values, now, lastGameFrameAt)
+        Spacer(Modifier.height(12.dp))
+        CategoryTabs(category, achievements.values, onSelect = { category = it })
+        Spacer(Modifier.height(10.dp))
+        HideObtainedToggle(hideObtained, onChange = { hideObtained = it })
+        Spacer(Modifier.height(10.dp))
+
+        // Succès de la famille sélectionnée, dans l'ordre du client (le thème suit le tri, sans épinglage).
+        val items = achievements.values
+            .filter { AchievementRegistry.category(it.id) == category }
+            .filterNot { hideObtained && it.obtained }
+            .sortedWith(AchievementOrder)
+
+        if (items.isEmpty()) {
+            EmptyCategory(hideObtained)
+        } else {
             Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
-                // Groupé par catégorie (id), succès non obtenus d'abord pour voir ce qu'il reste.
-                all.groupBy { it.categoryId }
-                    .toSortedMap(compareBy { it ?: Int.MAX_VALUE })
-                    .forEach { (categoryId, list) ->
-                        CategoryHeader(categoryId, list.count { it.obtained }, list.size)
-                        Spacer(Modifier.height(2.dp))
-                        list.sortedWith(compareBy({ it.obtained }, { it.id }))
-                            .forEachIndexed { i, a -> AchievementRow(a, zebra = i % 2 == 1) }
-                        Spacer(Modifier.height(12.dp))
-                    }
+                CardGrid(items)
             }
         }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CardGrid(items: List<Achievement>) {
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items.forEach { AchievementCard(it, Modifier.width(CARD_WIDTH)) }
     }
 }
 
@@ -75,14 +121,27 @@ private fun EmptySucces() {
 }
 
 @Composable
-private fun SuccesHeader(total: Int, obtained: Int, now: Long, lastGameFrameAt: Long?) {
+private fun EmptyCategory(hideObtained: Boolean) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            if (hideObtained) "Rien à afficher : tous les succès vus de cette famille sont validés.\nDécoche « Masquer les succès validés » pour les revoir."
+            else "Aucun succès de cette famille capturé pour l'instant.\nOuvre la catégorie correspondante dans le jeu.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun SuccesHeader(all: Collection<Achievement>, now: Long, lastGameFrameAt: Long?) {
+    val obtained = all.count { it.obtained }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Succès d'élevage", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
         NetworkChip(now, lastGameFrameAt)
         Spacer(Modifier.width(12.dp))
         Text(
-            "$obtained/$total obtenus",
+            "$obtained/${all.size} validés",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -90,88 +149,139 @@ private fun SuccesHeader(total: Int, obtained: Int, now: Long, lastGameFrameAt: 
 }
 
 @Composable
-private fun CategoryHeader(categoryId: Int?, obtained: Int, total: Int) {
+private fun CategoryTabs(selected: AchievementCategory, all: Collection<Achievement>, onSelect: (AchievementCategory) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        AchievementCategory.entries.forEach { cat ->
+            val inCat = all.filter { AchievementRegistry.category(it.id) == cat }
+            CategoryChip(cat.label, inCat.count { it.obtained }, inCat.size, cat == selected) { onSelect(cat) }
+        }
+    }
+}
+
+@Composable
+private fun CategoryChip(label: String, obtained: Int, total: Int, active: Boolean, onClick: () -> Unit) {
+    val bg = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val fg = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+        Modifier.clip(RoundedCornerShape(8.dp)).background(bg).clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            categoryId?.let { "Catégorie #$it" } ?: "Sans catégorie",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            "$obtained/$total",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal, color = fg)
+        // Compteur validés/total — masqué tant que rien n'est chargé pour cette famille.
+        if (total > 0) {
+            Spacer(Modifier.width(6.dp))
+            Text("$obtained/$total", style = MaterialTheme.typography.labelSmall, color = fg.copy(alpha = 0.7f))
+        }
     }
-    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 }
 
 @Composable
-private fun AchievementRow(a: Achievement, zebra: Boolean) {
-    val bg = if (zebra) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent
+private fun HideObtainedToggle(checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(
+                // Pouce bien visible même éteint (sinon il se fond dans le gris).
+                uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
+                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                uncheckedBorderColor = MaterialTheme.colorScheme.outline,
+            ),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "Masquer les succès validés",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.clickable { onChange(!checked) },
+        )
+    }
+}
+
+/**
+ * Carte d'un succès, alignée à gauche et empilée. L'état validé est porté par la **bordure verte**
+ * (pas de texte « Validé » ni de points). Pour un succès-**méta** (qui regroupe d'autres succès),
+ * on n'affiche pas la description générique (« Obtenir les succès suivants ») : la liste des
+ * objectifs nomme déjà les sous-succès. Tous les objectifs sont montrés, validés inclus.
+ */
+@Composable
+private fun AchievementCard(a: Achievement, modifier: Modifier) {
     val total = a.objectives.size
-    val accent = if (a.obtained) BreedColors.feconde else MaterialTheme.colorScheme.onSurfaceVariant
+    val accent = if (a.obtained) BreedColors.feconde else BreedColors.fertile
     val title = AchievementRegistry.name(a.id) ?: "Succès #${a.id}"
-    val points = AchievementRegistry.points(a.id)
-    // Objectifs encore en cours (valeur courante présente) : le détail actionnable de ce qu'il reste.
-    val pending = a.objectives.filter { !it.completed }
+    val isMeta = AchievementRegistry.children(a.id).isNotEmpty()
+    // Description seulement pour un succès terminal multi-objectifs (sinon redondante / vide de sens).
+    val description = if (!isMeta && total > 1) AchievementRegistry.description(a.id) else null
+
+    val border = if (a.obtained) BreedColors.feconde else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
     Column(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(bg)
-            .padding(horizontal = 8.dp, vertical = 5.dp),
+        modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(if (a.obtained) 1.5.dp else 1.dp, border, RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        // Progression : compteur + courte barre, regroupés à gauche.
+        Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Pastille d'état (obtenu = vert plein, sinon contour)
-            Box(Modifier.width(26.dp)) {
-                Box(Modifier.size(12.dp).background(if (a.obtained) accent else accent.copy(alpha = 0.35f), CircleShape))
-            }
-            Text(
-                title,
-                Modifier.width(240.dp),
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = if (a.obtained) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Box(Modifier.width(52.dp)) {
-                points?.let { Text("$it pts", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
             Text(
                 "${a.completedCount}/$total",
-                Modifier.width(52.dp),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (a.obtained) accent else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            ProgressBar(a.completedCount, total, accent, Modifier.weight(1f))
+            Spacer(Modifier.width(8.dp))
+            ProgressBar(a.completedCount, total, accent, Modifier.width(100.dp))
         }
-        // Détail des objectifs en cours (libellé issu de la table + progression courante/cible).
-        if (pending.isNotEmpty() && !a.obtained) {
-            Spacer(Modifier.height(3.dp))
-            pending.forEach { o ->
-                Row(Modifier.fillMaxWidth().padding(start = 26.dp, top = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        AchievementRegistry.objectiveText(o.id) ?: "Objectif #${o.id}",
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        "${o.current}/${o.target}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+        if (!description.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        // Objectifs (validés + restants) en puces compactes. Pour un succès mono-objectif, la
+        // description sert de repli quand l'objectif n'a pas de libellé propre (ex. #79).
+        if (a.objectives.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            val fallback = if (total == 1) AchievementRegistry.description(a.id) else null
+            ObjectiveChips(a.objectives, fallback)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ObjectiveChips(objectives: List<AchievementObjective>, fallback: String?) {
+    // Validés d'abord (ce qui est acquis se lit en un coup d'œil), puis restants.
+    val sorted = objectives.sortedByDescending { it.completed }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        sorted.forEach { ObjectiveChip(it, fallback) }
+    }
+}
+
+@Composable
+private fun ObjectiveChip(o: AchievementObjective, fallback: String?) {
+    val done = o.completed
+    val label = AchievementRegistry.objectiveText(o.id) ?: fallback ?: "#${o.id}"
+    // Objectif numérique en cours (cible > 1) : on montre la progression chiffrée.
+    val text = if (!done && o.target > 1) "$label ${o.current}/${o.target}" else label
+    val bg = if (done) BreedColors.feconde.copy(alpha = 0.18f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+    val fg = if (done) BreedColors.feconde else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier.clip(RoundedCornerShape(5.dp)).background(bg).padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (done) {
+            Text("✓", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = fg)
+            Spacer(Modifier.width(3.dp))
+        }
+        Text(text, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
