@@ -38,9 +38,13 @@ object BreedColors {
     val female = Color(0xFFE86AA6)
 
     val serenityGreen = Color(0xFF3FB950)
+    val serenityRose = Color(0xFFE86AA6)
+    val serenityViolet = Color(0xFFA371F7)
     val serenityPurple = Color(0xFFA371F7)
-    val serenityBlue = Color(0xFF58A6FF)
     val serenityRed = Color(0xFFF85149)
+
+    /** Marron clair pour l'icône d'enclos (barrière en bois), indépendant de l'état de sélection. */
+    val fence = Color(0xFFC8A87C)
 
     val tier1 = Color(0xFFF85149)
     val tier2 = Color(0xFFD29922)
@@ -67,11 +71,13 @@ fun tierColor(t: FuelTier): Color = when (t) {
     FuelTier.T4 -> BreedColors.tier4
 }
 
+// NB : les noms d'enum (BLUE/PURPLE) sont historiques ; les couleurs affichées suivent la
+// convention in-game demandée : ≤ -2000 rouge, -2000..-1 violet, 0..2000 rose, ≥ 2001 vert.
 fun serenityColor(b: SerenityBand): Color = when (b) {
-    SerenityBand.GREEN -> BreedColors.serenityGreen
-    SerenityBand.PURPLE -> BreedColors.serenityPurple
-    SerenityBand.BLUE -> BreedColors.serenityBlue
-    SerenityBand.RED -> BreedColors.serenityRed
+    SerenityBand.GREEN -> BreedColors.serenityGreen   // ≥ 2001 : vert
+    SerenityBand.PURPLE -> BreedColors.serenityRose   // 0..2000 : rose
+    SerenityBand.BLUE -> BreedColors.serenityViolet   // -2000..-1 : violet
+    SerenityBand.RED -> BreedColors.serenityRed       // ≤ -2000 : rouge
 }
 
 fun gaugeColor(type: Int): Color = when (type) {

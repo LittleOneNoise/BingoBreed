@@ -9,7 +9,10 @@ import fr.lilone.bingobreed.sniffer.listener.GameServerListener
 import fr.lilone.bingobreed.sniffer.model.ServerEndpoint
 import fr.lilone.bingobreed.sniffer.model.SnifferEvent
 import fr.lilone.bingobreed.sniffer.model.VersionCheck
+import fr.lilone.bingobreed.sniffer.model.breeding.Achievement
+import fr.lilone.bingobreed.sniffer.model.breeding.Mount
 import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
+import fr.lilone.bingobreed.sniffer.parser.breeding.AchievementMapper
 import fr.lilone.bingobreed.sniffer.parser.breeding.PaddockMapper
 import fr.lilone.bingobreed.sniffer.net.HostResolver
 import fr.lilone.bingobreed.sniffer.net.NetworkInterfaceDetector
@@ -34,6 +37,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.pcap4j.core.PcapNetworkInterface
 import java.util.concurrent.ConcurrentHashMap
@@ -98,12 +102,24 @@ class SnifferEngine(
     @Volatile
     private var lastPaddockIndex: Int? = null
 
+    /** Dernière catégorie de succès demandée (requête `lfc`) — la réponse `lfd` ne la porte pas. */
+    @Volatile
+    private var lastAchievementCategory: Int? = null
+
+    private val _achievements = MutableStateFlow<Map<Int, Achievement>>(emptyMap())
+    /**
+     * Succès vus passer, indexés par id (alimenté par les listes détaillées `lfd`, rattachées à la
+     * catégorie de la dernière requête `lfc`). Exposé à l'UI (onglet Succès).
+     */
+    val achievements: StateFlow<Map<Int, Achievement>> = _achievements.asStateFlow()
+
+    private val _stableMounts = MutableStateFlow<Map<String, Mount>>(emptyMap())
     /**
      * Registre des montures connues de l'**étable** (depuis `hhv`, + celles sorties de l'enclos),
-     * pour réinjecter leurs données quand une monture entre dans l'enclos via un transfert `hif`
-     * (le `hif` ne porte que l'UUID).
+     * exposé à l'UI (onglet Étable) et utilisé pour réinjecter les données d'une monture qui
+     * (re)entre dans l'enclos via un transfert `hif` (le `hif` ne porte que l'UUID).
      */
-    private val stableMounts = ConcurrentHashMap<String, fr.lilone.bingobreed.sniffer.model.breeding.Mount>()
+    val stableMounts: StateFlow<Map<String, Mount>> = _stableMounts.asStateFlow()
 
     /** Démarre le sniffer (non bloquant). */
     fun start() {
@@ -221,7 +237,12 @@ class SnifferEngine(
 
                             PaddockMapper.selectedPaddockIndex(decoded, dynamic)?.let { lastPaddockIndex = it }
 
-                            PaddockMapper.stableMounts(decoded, dynamic)?.let { stableMounts.putAll(it) }
+                            PaddockMapper.stableMounts(decoded, dynamic)?.let { found -> _stableMounts.update { it + found } }
+
+                            AchievementMapper.requestedCategory(decoded, dynamic)?.let { lastAchievementCategory = it }
+                            AchievementMapper.detailedAchievements(decoded, dynamic, lastAchievementCategory)?.let { list ->
+                                _achievements.update { it + list.associateBy(Achievement::id) }
+                            }
 
                             PaddockMapper.fromGameMessage(decoded, dynamic)?.let { paddock ->
                                 val withId = paddock.copy(id = lastPaddockIndex)
@@ -264,17 +285,19 @@ class SnifferEngine(
     private suspend fun applyMountTransfer(host: String, ids: Set<String>) {
         val current = _activePaddock.value ?: return
         val mounts = current.mounts.toMutableMap()
+        val toStable = mutableMapOf<String, Mount>()
         var changed = false
         for (uuid in ids) {
             val inEnclos = mounts[uuid]
             if (inEnclos != null) {
-                stableMounts[uuid] = inEnclos
+                toStable[uuid] = inEnclos
                 mounts.remove(uuid)
                 changed = true
             } else {
-                stableMounts[uuid]?.let { mounts[uuid] = it; changed = true }
+                _stableMounts.value[uuid]?.let { mounts[uuid] = it; changed = true }
             }
         }
+        if (toStable.isNotEmpty()) _stableMounts.update { it + toStable }
         if (changed) {
             val updated = current.copy(mounts = mounts)
             _activePaddock.value = updated
