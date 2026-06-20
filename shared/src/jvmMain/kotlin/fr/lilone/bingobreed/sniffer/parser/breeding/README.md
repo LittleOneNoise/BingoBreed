@@ -55,10 +55,10 @@ La monture telle qu'on la reconstitue (cf. [`Mount`](../../model/breeding/Paddoc
 
 Sous-messages :
 - **généalogie** (`hlm`) : `feac`=1 (robe parent 1), `fead`=2 (robe parent 2), `feae`=3 inutilisé.
-  Chaque valeur = id de robe dans un **espace propre aux parents, DISTINCT de celui de `feam`**
-  (cf. `model/breeding/Robes.kt` : `PARENT_IDS` vs `OWN_IDS`). Preuve : Turquoise = `98` en robe
-  propre mais `93` en parent ; « Roux et Doré » = `115` en propre, `120` en parent. Ordre
-  `feac`/`fead` = parent 1 / parent 2 ; `feap` constant entre frères/sœurs.
+  Chaque valeur = id de robe dans le **même espace que `feam`** (table unique
+  `model/breeding/Robes.kt` : `IDS`). Vérifié par capture systématique : Turquoise=`98`,
+  « Roux et Doré »=`115`, « Ébène et Amande »=`120` dans les deux champs. Ordre `feac`/`fead`
+  = parent 1 / parent 2 ; `feap` constant entre frères/sœurs.
 - **jauge** (`hll`) : valeur=1 (`fdzx`), type=2 (`fdzy`, enum `hhd` 0/1/2).
 - **effet** (`kiv`) : id=8 (`fppp`) ; valeur simple=3 (`fpps`) ; effet complexe=7 (`fppy`).
 

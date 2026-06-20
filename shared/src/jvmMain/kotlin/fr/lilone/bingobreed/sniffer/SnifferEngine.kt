@@ -84,8 +84,26 @@ class SnifferEngine(
     /** Dernier état d'enclos décodé, pour binding direct par l'UI (null si rien encore vu). */
     val activePaddock: StateFlow<Paddock?> = _activePaddock.asStateFlow()
 
+    private val _lastGameFrameAt = MutableStateFlow<Long?>(null)
+    /**
+     * Horodatage (epoch ms) du dernier frame de jeu **quelconque** (flux bavard). Santé
+     * **réseau/sniffer** globale, indépendante de toute activité d'enclos.
+     */
+    val lastGameFrameAt: StateFlow<Long?> = _lastGameFrameAt.asStateFlow()
+
     /** Listeners de jeu actifs, indexés par host pour éviter les doublons. */
     private val gameJobs = ConcurrentHashMap<String, Job>()
+
+    /** Dernier index d'enclos sélectionné (requête `hkv`) — le contenu `him` ne le porte pas. */
+    @Volatile
+    private var lastPaddockIndex: Int? = null
+
+    /**
+     * Registre des montures connues de l'**étable** (depuis `hhv`, + celles sorties de l'enclos),
+     * pour réinjecter leurs données quand une monture entre dans l'enclos via un transfert `hif`
+     * (le `hif` ne porte que l'UUID).
+     */
+    private val stableMounts = ConcurrentHashMap<String, fr.lilone.bingobreed.sniffer.model.breeding.Mount>()
 
     /** Démarre le sniffer (non bloquant). */
     fun start() {
@@ -129,23 +147,23 @@ class SnifferEngine(
 
     /**
      * Contrôle l'écart entre la version du client Dofus installé et la version de référence
-     * de BingoBreeder. Best-effort : ne bloque jamais le démarrage, mais loggue un warning
+     * de BingoBreed. Best-effort : ne bloque jamais le démarrage, mais loggue un warning
      * et émet l'événement pour que l'UI puisse alerter en cas de désynchronisation du parsing.
      */
     private suspend fun checkClientVersion() {
         val check = configProvider.checkVersion()
         when (check) {
             is VersionCheck.UpToDate ->
-                log.info("Version client alignée sur la référence BingoBreeder: {}", check.local)
+                log.info("Version client alignée sur la référence BingoBreed: {}", check.local)
             is VersionCheck.ClientAhead ->
                 log.warn(
-                    "Client Dofus plus récent que la référence BingoBreeder ({} > {}) — " +
+                    "Client Dofus plus récent que la référence BingoBreed ({} > {}) — " +
                         "parsing/descripteurs potentiellement obsolètes.",
                     check.local, check.reference,
                 )
             is VersionCheck.ClientBehind ->
                 log.warn(
-                    "Client Dofus plus ancien que la référence BingoBreeder ({} < {}).",
+                    "Client Dofus plus ancien que la référence BingoBreed ({} < {}).",
                     check.local, check.reference,
                 )
             is VersionCheck.Unknown ->
@@ -189,6 +207,7 @@ class SnifferEngine(
                     val capture = captureFactory.create(nif, endpoints)
                     val reassembler = TcpStreamReassembler(endpoints)
                     GameServerListener(capture, reassembler).listen().collect { frame ->
+                        _lastGameFrameAt.value = System.currentTimeMillis()
                         _events.emit(SnifferEvent.GameFrame(selection.host, frame))
                         gameAnyExtractor.extract(frame, typeUrlRegistry)?.let { decoded ->
                             val dynamic = gameMessageDecoder.decode(decoded)
@@ -200,9 +219,29 @@ class SnifferEngine(
                             )
                             _events.emit(SnifferEvent.GameMessage(selection.host, decoded, dynamic))
 
+                            PaddockMapper.selectedPaddockIndex(decoded, dynamic)?.let { lastPaddockIndex = it }
+
+                            PaddockMapper.stableMounts(decoded, dynamic)?.let { stableMounts.putAll(it) }
+
                             PaddockMapper.fromGameMessage(decoded, dynamic)?.let { paddock ->
-                                _activePaddock.value = paddock
-                                _events.emit(SnifferEvent.PaddockUpdated(selection.host, paddock))
+                                val withId = paddock.copy(id = lastPaddockIndex)
+                                _activePaddock.value = withId
+                                _events.emit(SnifferEvent.PaddockUpdated(selection.host, withId))
+                            }
+
+                            PaddockMapper.transferredMountIds(decoded, dynamic)?.let { ids ->
+                                applyMountTransfer(selection.host, ids)
+                            }
+
+                            PaddockMapper.activatedElement(decoded, dynamic)?.let { el ->
+                                applyGaugeActive(selection.host, el, active = true)
+                            }
+                            PaddockMapper.deactivatedElement(decoded, dynamic)?.let { el ->
+                                applyGaugeActive(selection.host, el, active = false)
+                            }
+                            // Réponse serveur : jauges auto-désactivées (règles 1 sérénité / 2 max).
+                            PaddockMapper.autoDeactivatedElements(decoded, dynamic)?.forEach { el ->
+                                applyGaugeActive(selection.host, el, active = false)
                             }
                         }
                     }
@@ -213,6 +252,52 @@ class SnifferEngine(
                     log.debug("Listener de jeu {} terminé", selection.host)
                 }
             }
+        }
+    }
+
+    /**
+     * Applique un transfert de montures (`hif`) à l'enclos actif **en live**, sans attendre le
+     * prochain push complet : on déduit le sens par l'état courant — UUID présent dans l'enclos
+     * → il en sort (retiré, mémorisé dans l'étable) ; sinon → il y entre (réinjecté depuis le
+     * registre étable si connu).
+     */
+    private suspend fun applyMountTransfer(host: String, ids: Set<String>) {
+        val current = _activePaddock.value ?: return
+        val mounts = current.mounts.toMutableMap()
+        var changed = false
+        for (uuid in ids) {
+            val inEnclos = mounts[uuid]
+            if (inEnclos != null) {
+                stableMounts[uuid] = inEnclos
+                mounts.remove(uuid)
+                changed = true
+            } else {
+                stableMounts[uuid]?.let { mounts[uuid] = it; changed = true }
+            }
+        }
+        if (changed) {
+            val updated = current.copy(mounts = mounts)
+            _activePaddock.value = updated
+            _events.emit(SnifferEvent.PaddockUpdated(host, updated))
+        }
+    }
+
+    /**
+     * Applique en live l'(dés)activation d'une jauge de l'enclos actif, sans attendre le
+     * prochain push (qui n'arrive pas s'il n'y a ni monture ni consommation).
+     */
+    private suspend fun applyGaugeActive(host: String, element: Int, active: Boolean) {
+        val current = _activePaddock.value ?: return
+        val elements = current.activeElements.toMutableList()
+        val changed = if (active) {
+            if (element !in elements) elements.add(element).let { true } else false
+        } else {
+            elements.remove(element)
+        }
+        if (changed) {
+            val updated = current.copy(activeElements = elements)
+            _activePaddock.value = updated
+            _events.emit(SnifferEvent.PaddockUpdated(host, updated))
         }
     }
 

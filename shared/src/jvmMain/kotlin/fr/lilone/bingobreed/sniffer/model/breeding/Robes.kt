@@ -3,18 +3,14 @@ package fr.lilone.bingobreed.sniffer.model.breeding
 /**
  * Référence des robes de **Muldo** : ids réseau → nom de robe, et nom → génération.
  *
- * ⚠️ **Deux espaces d'ids distincts et indépendants**, à ne pas confondre :
- *  - [OWN_IDS] : robe **propre** de la monture ([Mount.appearanceId], champ `feam`).
- *  - [PARENT_IDS] : robes des **parents** ([Mount.parents], champ `feap`).
+ * ⚠️ **Un seul espace d'ids** pour la robe propre ([Mount.appearanceId], champ `feam`) ET
+ * les robes des parents ([Mount.parents], champ `feap`) : un id donné désigne la même robe
+ * dans les deux cas (confirmé par capture systématique, ex. `115`=Roux et Doré, `120`=Ébène
+ * et Amande, `98`=Turquoise dans les deux champs). La table [IDS] est donc commune.
  *
- * Un même id désigne des robes différentes selon le champ (ex. Turquoise = `98` en robe
- * propre mais `93` en tant que parent ; « Roux et Doré » = `115` en propre, `120` en parent).
- * Confirmé par deux captures (montures nommées d'après leur robe propre, puis d'après les
- * parents).
- *
- * [GENERATIONS] (robe → génération) est commune : une fois le nom de robe connu, la
- * génération en découle. Tables **partielles**, à compléter au fil des captures (relève
- * l'id « #xx » affiché dans l'UI + le nom de robe en jeu). Espace **spécifique au Muldo**.
+ * [GENERATIONS] (robe → génération) en découle. Table **partielle**, à compléter au fil des
+ * captures (relève l'id « (xx) » affiché dans l'UI + le nom de robe en jeu). Espace
+ * **spécifique au Muldo**.
  */
 object Robes {
 
@@ -71,43 +67,55 @@ object Robes {
         GENERATIONS.flatMap { (gen, robes) -> robes.map { it to gen } }.toMap()
 
     /**
-     * id → robe **propre** (`feam`). Relevé sur montures nommées d'après leur robe (capture
-     * 2026-06). À compléter.
+     * id → robe (espace **commun** robe propre `feam` et robes parentales `feap`). Relevé sur
+     * montures nommées d'après leur robe et sur les généalogies affichées. À compléter.
      */
-    val OWN_IDS: Map<Int, String> = mapOf(
+    val IDS: Map<Int, String> = mapOf(
+        90 to "Orchidée",
+        91 to "Ébène",
+        92 to "Indigo",
+        93 to "Pourpre",
         94 to "Doré",
         95 to "Roux",
         96 to "Amande",
+        97 to "Ivoire",
         98 to "Turquoise",
+        99 to "Prune",
+        100 to "Émeraude",
+        101 to "Doré et Pourpre",
+        102 to "Indigo et Pourpre",
+        104 to "Orchidée et Pourpre",
+        105 to "Doré et Orchidée",
+        107 to "Ébène et Orchidée",
+        108 to "Doré et Indigo",
+        109 to "Ébène et Indigo",
         114 to "Roux et Ébène",
         115 to "Roux et Doré",
+        116 to "Roux et Amande",
+        118 to "Orchidée et Amande",
         120 to "Ébène et Amande",
+        121 to "Doré et Amande",
+        122 to "Pourpre et Ivoire",
+        125 to "Ébène et Ivoire",
+        138 to "Amande et Ivoire",
+        139 to "Turquoise et Ivoire",
         140 to "Turquoise et Pourpre",
+        142 to "Turquoise et Ébène",
+        145 to "Turquoise et Doré",
+        150 to "Prune et Doré",
+        160 to "Doré et Émeraude",
+        165 to "Turquoise et Orchidée",
     )
 
-    /**
-     * id → robe **parentale** (`feap`). Relevé sur montures nommées d'après leurs parents.
-     * **Espace différent de [OWN_IDS].** À compléter.
-     */
-    val PARENT_IDS: Map<Int, String> = mapOf(
-        91 to "Amande",
-        93 to "Turquoise",
-        94 to "Roux",
-        95 to "Doré",
-        96 to "Ébène",
-        98 to "Pourpre",
-        115 to "Ébène et Amande",
-        120 to "Roux et Doré",
-    )
+    /** Nom court de la robe (sans génération), ou null si l'id est inconnu. */
+    fun robeName(id: Int): String? = IDS[id]
 
-    /** Libellé de la robe propre : « Roux et Doré (Gen 4) » si connu, sinon « #id ». */
-    fun ownLabel(id: Int): String = labelFrom(OWN_IDS, id)
+    /** Génération de la robe, ou null si robe/id inconnu. */
+    fun robeGeneration(id: Int): Int? = IDS[id]?.let { GENERATION_OF[it] }
 
-    /** Libellé d'une robe parentale : « Amande (Gen 3) » si connu, sinon « #id ». */
-    fun parentLabel(id: Int): String = labelFrom(PARENT_IDS, id)
-
-    private fun labelFrom(table: Map<Int, String>, id: Int): String {
-        val name = table[id] ?: return "#$id"
+    /** Libellé : « Roux et Doré (Gen 4) » si connu, sinon « #id ». */
+    fun robeLabel(id: Int): String {
+        val name = IDS[id] ?: return "#$id"
         return GENERATION_OF[name]?.let { "$name (Gen $it)" } ?: name
     }
 }

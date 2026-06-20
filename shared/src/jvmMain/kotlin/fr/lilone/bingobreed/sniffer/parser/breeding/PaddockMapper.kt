@@ -26,14 +26,34 @@ object PaddockMapper {
     /** Codes type_url (sans préfixe `type.ankama.com/`). À ré-identifier après patch. */
     const val CODE_FULL = "hiy"
     const val CODE_UPDATE = "hle"
+    const val CODE_SELECT = "hkv" // C→S : sélection d'un enclos (porte l'index)
+    const val CODE_TRANSFER = "hif" // S→C : changement d'emplacement de montures (enclos↔étable)
+    const val CODE_STABLE = "hhv" // S→C : contenu complet de l'étable
+    const val CODE_GAUGE_ON = "hhw" // C→S : activer une jauge
+    const val CODE_GAUGE_OFF = "hki" // C→S : désactiver une jauge
+    const val CODE_GAUGE_ON_RESP = "hjj" // S→C : réponse d'activation (jauges auto-désactivées)
 
     /** Numéros de champ — UNIQUE point de resynchronisation après un patch. */
     private object F {
-        // hiy { fdrs=1 ; fdrt=2 : him }
+        // hiy { fdrs=1 (enum hiw) ; fdrt=2 : him } — pas d'id d'enclos transmis
         const val HIY_CONTENT = 2
-        // hle { oneof { fdzc=2 : hlc } } ; hlc { fdyv=1 ; fdyw=2 : him }
+        // hle { oneof { fdzc=2 : hlc } } ; hlc { fdyv=1 (enum hhf, flag) ; fdyw=2 : him }
         const val HLE_HLC = 2
         const val HLC_CONTENT = 2
+        // hkv { fdxp=1 ; oneof { fdxq=2 int32 index enclos ; fdxs=3 } }
+        const val HKV_INDEX = 2
+        // hif { fdpn=1 map<string,hid> ; fdpo=2 map<string,hid> } — montures déplacées (clé=UUID)
+        const val HIF_MAP_A = 1
+        const val HIF_MAP_B = 2
+        // hhv { fdoh=3 ; oneof { fdoi=1 : hht ; fdoj=2 } } ; hht { fdoc=1 map<string,hlo> }
+        const val HHV_HHT = 1
+        const val HHT_MOUNTS = 1
+        // hhw (activer) { fdop=1 ; fdoq=2 hhc } ; hki (désactiver) { fdvw=1 hhc }
+        const val HHW_ELEMENT = 2
+        const val HKI_ELEMENT = 1
+        // hjj { oneof { fdsu=1 ; fdsw=3 : hjh } } ; hjh { fdsp=1 repeated hhc } — auto-désactivées
+        const val HJJ_FDSW = 3
+        const val FDSW_ELEMENTS = 1
         // him { fdql=1 repeated enum ; fdqm=2 repeated hhx ; fdqn=3 map<string,hlo> }
         const val HIM_ACTIVE_ELEMENTS = 1
         const val HIM_FUEL_GAUGES = 2
@@ -76,6 +96,58 @@ object PaddockMapper {
             CODE_UPDATE -> fromUpdate(msg)
             else -> null
         }
+    }
+
+    /** Index d'enclos (1..6) d'une requête de sélection `hkv`, ou null si autre message. */
+    fun selectedPaddockIndex(message: DecodedGameAny, dynamic: Message?): Int? {
+        if (message.code != CODE_SELECT) return null
+        return dynamic?.intOrNull(F.HKV_INDEX)
+    }
+
+    /**
+     * UUIDs des montures dont l'emplacement vient de changer (réponse `hif`), ou null si ce
+     * n'est pas un `hif`. Le sens (entrée/sortie d'enclos) se déduit côté appelant via l'état.
+     */
+    fun transferredMountIds(message: DecodedGameAny, dynamic: Message?): Set<String>? {
+        if (message.code != CODE_TRANSFER) return null
+        val msg = dynamic ?: return null
+        val a = msg.messageList(F.HIF_MAP_A).mapNotNull { it.str(F.MAP_KEY) }
+        val b = msg.messageList(F.HIF_MAP_B).mapNotNull { it.str(F.MAP_KEY) }
+        return (a + b).toSet().ifEmpty { null }
+    }
+
+    /** Élément de jauge venant d'être **activé** (requête `hhw`), ou null si autre message. */
+    fun activatedElement(message: DecodedGameAny, dynamic: Message?): Int? {
+        if (message.code != CODE_GAUGE_ON) return null
+        return dynamic?.enumNumber(F.HHW_ELEMENT)?.takeIf { it >= 0 }
+    }
+
+    /** Élément de jauge venant d'être **désactivé** (requête `hki`), ou null si autre message. */
+    fun deactivatedElement(message: DecodedGameAny, dynamic: Message?): Int? {
+        if (message.code != CODE_GAUGE_OFF) return null
+        return dynamic?.enumNumber(F.HKI_ELEMENT)?.takeIf { it >= 0 }
+    }
+
+    /**
+     * Jauges **auto-désactivées** par le serveur suite à une activation (réponse `hjj`) :
+     * application des règles « 1 jauge de sérénité » et « 2 jauges max » (éviction FIFO).
+     * Liste vide si rien n'a été désactivé ; null si ce n'est pas un `hjj`.
+     */
+    fun autoDeactivatedElements(message: DecodedGameAny, dynamic: Message?): List<Int>? {
+        if (message.code != CODE_GAUGE_ON_RESP) return null
+        val fdsw = dynamic?.msg(F.HJJ_FDSW) ?: return emptyList()
+        return fdsw.enumList(F.FDSW_ELEMENTS)
+    }
+
+    /** Montures de l'étable (`hhv`) indexées par UUID, ou null si autre message / étable absente. */
+    fun stableMounts(message: DecodedGameAny, dynamic: Message?): Map<String, Mount>? {
+        if (message.code != CODE_STABLE) return null
+        val hht = dynamic?.msg(F.HHV_HHT) ?: return null
+        return hht.messageList(F.HHT_MOUNTS).mapNotNull { entry ->
+            val uuid = entry.str(F.MAP_KEY) ?: return@mapNotNull null
+            val value = entry.msg(F.MAP_VALUE) ?: return@mapNotNull null
+            uuid to toMount(uuid, value)
+        }.toMap().ifEmpty { null }
     }
 
     fun fromFull(hiy: Message): Paddock? = hiy.msg(F.HIY_CONTENT)?.let(::fromContent)

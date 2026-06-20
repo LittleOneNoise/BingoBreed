@@ -45,13 +45,13 @@ data class LocalClientInfo(
 
 /**
  * Résultat du contrôle d'écart entre la version du client Dofus installé localement
- * et la version de [reference] sur laquelle BingoBreeder a été construit à sa release.
+ * et la version de [reference] sur laquelle BingoBreed a été construit à sa release.
  *
  * Un écart ([ClientAhead] / [ClientBehind]) signale que le parsing protobuf et les
  * descripteurs embarqués peuvent être désynchronisés du client réel.
  */
 sealed interface VersionCheck {
-    /** Version de référence de BingoBreeder, figée au build. */
+    /** Version de référence de BingoBreed, figée au build. */
     val reference: String
     /** Version brute lue dans le fichier local (`null` si illisible). */
     val local: String?

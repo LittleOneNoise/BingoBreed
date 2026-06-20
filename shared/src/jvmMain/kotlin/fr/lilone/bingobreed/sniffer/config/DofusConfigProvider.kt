@@ -70,7 +70,7 @@ class DofusConfigProvider(
 
     /**
      * Compare la version du client Dofus installé localement à la
-     * [DOFUS_CLIENT_VERSION_REFERENCE] figée au build de BingoBreeder, et classe l'écart
+     * [DOFUS_CLIENT_VERSION_REFERENCE] figée au build de BingoBreed, et classe l'écart
      * éventuel.
      *
      * Un écart signale que les descripteurs / le parsing embarqués peuvent être
@@ -99,7 +99,7 @@ class DofusConfigProvider(
         const val DEFAULT_CONFIG_URL = "https://dofus2.cdn.ankama.com/config/dofus3.json"
 
         /**
-         * Version du client Dofus sur laquelle BingoBreeder a été construit à sa release :
+         * Version du client Dofus sur laquelle BingoBreed a été construit à sa release :
          * référence pour [checkVersion]. À mettre à jour à chaque réalignement des
          * descripteurs / du parsing protobuf sur une nouvelle version du client.
          */

@@ -15,6 +15,11 @@ data class Paddock(
     val fuelGauges: List<FuelGauge>,
     /** Montures présentes, indexées par UUID. */
     val mounts: Map<String, Mount>,
+    /**
+     * Index de l'enclos (1..6), issu de la **dernière requête de sélection `hkv`**
+     * (le contenu `him` ne le transporte pas). Null tant qu'aucune sélection n'a été vue.
+     */
+    val id: Int? = null,
 )
 
 /** Une jauge de carburant d'enclos (0..100000). */
@@ -56,9 +61,8 @@ data class Mount(
     val appearanceId: Int,
     /**
      * **Généalogie** : robes des 2 parents (sous-message `feap`, champ 7 ; `feac`=parent 1,
-     * `fead`=parent 2). Chaque valeur est un id de robe dans un **espace propre aux parents**,
-     * distinct de celui de [appearanceId] (cf. `Robes.PARENT_IDS` vs `Robes.OWN_IDS`).
-     * Déjà présent dans le résumé d'enclos (affiché au survol, sans paquet réseau).
+     * `fead`=parent 2). Mêmes ids que [appearanceId] : **espace de robes commun** (cf.
+     * `Robes.IDS`). Déjà présent dans le résumé d'enclos (sans paquet réseau supplémentaire).
      * Liste vide si la monture n'a pas de généalogie (robe de base / parents inconnus).
      */
     val parents: List<Int>,
