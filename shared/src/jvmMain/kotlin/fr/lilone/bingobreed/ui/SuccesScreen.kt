@@ -47,14 +47,37 @@ import fr.lilone.bingobreed.sniffer.model.breeding.AchievementRegistry
 /** Largeur d'une carte de succès ; les cartes s'écoulent en grille (plusieurs par ligne). */
 private val CARD_WIDTH = 380.dp
 
+/** Succès-thème racine de l'élevage (« L'éleveur c'est moi »), parent des succès-groupes. */
+private const val TOP_META_ID = 91
+
+/** Succès-groupes (« Générations aquatiques »…) : les méta directement sous le thème racine. */
+private val GEN_GROUPS: List<Int> =
+    AchievementRegistry.children(TOP_META_ID).filter { AchievementRegistry.children(it).isNotEmpty() }
+
 /**
- * Ordre d'affichage calé sur le client Dofus : points croissants, puis succès **terminaux** avant
- * les succès **méta** (qui regroupent d'autres succès), puis id croissant. Ex. Muldo : les gén. 9-10
- * (terminales, 50 pts) précèdent « Générations aquatiques » (méta, 50 pts) malgré un id plus grand.
+ * Index d'affichage d'une génération au sein de son groupe (2e→10e), tel que listé par le client —
+ * **pas** l'ordre des ids (croissant chez Muldo/Dragodinde, décroissant chez Volkorne).
+ */
+private val GEN_INDEX: Map<Int, Int> = buildMap {
+    GEN_GROUPS.forEach { group ->
+        AchievementRegistry.children(group).forEachIndexed { i, child -> put(child, i) }
+    }
+}
+
+/** Sous-rang à points égaux : prélèvement/naissance (−1) < générations (ordre du groupe) < méta. */
+private fun subRank(id: Int): Int = when {
+    AchievementRegistry.children(id).isNotEmpty() -> 1000 // succès-groupe / thème : après les générations
+    else -> GEN_INDEX[id] ?: -1                           // génération (ordre du groupe) sinon prélèvement
+}
+
+/**
+ * Ordre d'affichage calé sur le client Dofus : points croissants, puis [subRank] (prélèvement →
+ * générations 2e→10e → succès-groupe), puis id en dernier recours. Robuste au fait que les ids de
+ * génération sont croissants chez Muldo/Dragodinde mais décroissants chez Volkorne.
  */
 private val AchievementOrder: Comparator<Achievement> = compareBy(
     { AchievementRegistry.points(it.id) ?: Int.MAX_VALUE },
-    { AchievementRegistry.children(it.id).isNotEmpty() },
+    { subRank(it.id) },
     { it.id },
 )
 
