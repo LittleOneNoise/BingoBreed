@@ -8,50 +8,58 @@ import fr.lilone.bingobreed.sniffer.model.breeding.AchievementObjective
 
 /**
  * Transforme les messages de succès en [Achievement].
- *  - `lfc` (C→S) : requête de détail d'une catégorie — porte l'**id de catégorie**.
- *  - `lfd` (S→C) : liste détaillée des succès de la **dernière catégorie demandée**.
- *  - `ley` (S→C) : liste générale (succès presque terminés / en cours), non catégorisée.
+ *  - `mea` (C→S) : requête de détail d'une catégorie — porte l'**id de catégorie**.
+ *  - `mdu` (S→C) : liste détaillée des succès de la **dernière catégorie demandée**.
+ *  - `mdz` (S→C) : liste générale (succès presque terminés / en cours), non catégorisée.
  *
  * ⚠️ **Couche fragile au patch** (cf. [PaddockMapper]) : les numéros de champ ([F]) viennent
  * d'`output.proto` et sont le seul point à resynchroniser après une MAJ Dofus.
+ * Resynchronisé au patch 2026-06.
  */
 object AchievementMapper {
 
-    const val CODE_CATEGORY_REQ = "lfc" // C→S : requête détail catégorie (porte l'id)
-    const val CODE_DETAILED = "lfd"     // S→C : liste détaillée d'une catégorie
-    const val CODE_LIST = "ley"         // S→C : liste générale (en cours)
+    const val CODE_CATEGORY_REQ = "mea" // C→S : requête détail catégorie (porte l'id)
+    const val CODE_DETAILED = "mdu"     // S→C : liste détaillée d'une catégorie
+    const val CODE_LIST = "mdz"         // S→C : liste générale (en cours)
 
+    /**
+     * Numéros de champ wire — UNIQUE point de resynchronisation. Noms **sémantiques** stables ; ne
+     * mettre à jour que la **valeur** + le commentaire d'identité (`message.champ`). Patch 2026-06.
+     */
     private object F {
-        const val LFC_CATEGORY = 1   // lfc { ftff=1 }
-        const val LFD_ACHIEVEMENTS = 1 // lfd { ftfj=1 repeated lft }
-        const val LEY_ACHIEVEMENTS = 1 // ley { ftep=1 repeated lft }
-        // lft { ftht=1 id ; fthu=2 repeated lfr }
-        const val ACH_ID = 1
-        const val ACH_OBJECTIVES = 2
-        // lfr { fthm=1 optional valeur courante ; ftho=2 cible ; fthp=3 id }
-        const val OBJ_CURRENT = 1
-        const val OBJ_TARGET = 2
-        const val OBJ_ID = 3
+        const val REQUEST_CATEGORY = 1   // mea.gexi (id de catégorie demandée)
+        // Liste détaillée : `mdu` a deux listes `mds` — les deux sont lues
+        const val DETAILED_LIST_A = 1    // mdu.gewc  rep mds
+        const val DETAILED_LIST_B = 2    // mdu.gewd  rep mds
+        const val OVERVIEW_LIST = 1      // mdz.gexe  rep mds (vue d'ensemble)
+        // Succès (mds)
+        const val ACH_ID = 1             // mds.gevr
+        const val ACH_OBJECTIVES = 2     // mds.gevs  rep mdq
+        // Objectif (mdq)
+        const val OBJ_TARGET = 2         // mdq.gevk (cible)
+        const val OBJ_ID = 3             // mdq.gevl
+        const val OBJ_CURRENT = 4        // mdq.gevm (optional ; absent = terminé)
     }
 
-    /** Id de catégorie d'une requête `lfc`, ou null si autre message. */
+    /** Id de catégorie d'une requête de détail, ou null si autre message. */
     fun requestedCategory(message: DecodedGameAny, dynamic: Message?): Int? {
         if (message.code != CODE_CATEGORY_REQ) return null
-        return dynamic?.intOrNull(F.LFC_CATEGORY)
+        return dynamic?.intOrNull(F.REQUEST_CATEGORY)
     }
 
-    /** Succès d'une liste détaillée `lfd` (rattachés à [categoryId]), ou null si autre message. */
+    /** Succès d'une liste détaillée (rattachés à [categoryId]), ou null si autre message. */
     fun detailedAchievements(message: DecodedGameAny, dynamic: Message?, categoryId: Int?): List<Achievement>? {
         if (message.code != CODE_DETAILED) return null
         val msg = dynamic ?: return null
-        return msg.messageList(F.LFD_ACHIEVEMENTS).map { toAchievement(it, categoryId) }
+        return (msg.messageList(F.DETAILED_LIST_A) + msg.messageList(F.DETAILED_LIST_B))
+            .map { toAchievement(it, categoryId) }
     }
 
-    /** Succès d'une liste générale `ley` (sans catégorie), ou null si autre message. */
+    /** Succès d'une liste générale / vue d'ensemble (sans catégorie), ou null si autre message. */
     fun listedAchievements(message: DecodedGameAny, dynamic: Message?): List<Achievement>? {
         if (message.code != CODE_LIST) return null
         val msg = dynamic ?: return null
-        return msg.messageList(F.LEY_ACHIEVEMENTS).map { toAchievement(it, categoryId = null) }
+        return msg.messageList(F.OVERVIEW_LIST).map { toAchievement(it, categoryId = null) }
     }
 
     private fun toAchievement(m: Message, categoryId: Int?): Achievement = Achievement(

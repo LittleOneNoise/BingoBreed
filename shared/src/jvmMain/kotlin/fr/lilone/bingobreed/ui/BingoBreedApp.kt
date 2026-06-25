@@ -61,6 +61,7 @@ private enum class Tab(val label: String, val icon: DrawableResource?, val glyph
     ENCLOS("Enclos", Res.drawable.enclos, "🚧", tint = BreedColors.fence),
     ETABLE("Étable", null, "🐴"),
     SUCCES("Succès", Res.drawable.succes, "🏆", tint = BreedColors.gold),
+    REPRO("Repro", null, "🧬"),
     DEBUG("Debug", null, "🖥"),
 }
 
@@ -94,6 +95,7 @@ fun BingoBreedApp(engine: SnifferEngine) {
                             Tab.ENCLOS -> EnclosScreen(paddock, now, lastGameFrameAt)
                             Tab.ETABLE -> EtableScreen(stable, now, lastGameFrameAt)
                             Tab.SUCCES -> SuccesScreen(achievements, now, lastGameFrameAt)
+                            Tab.REPRO -> ReproScreen(stable, paddock, achievements, now, lastGameFrameAt)
                             Tab.DEBUG -> DebugScreen(engine)
                         }
                         if (showSignalOverlay) SignalOverlay(signalAge!!)

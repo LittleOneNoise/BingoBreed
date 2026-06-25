@@ -32,41 +32,44 @@ La monture telle qu'on la reconstitue (cf. [`Mount`](../../model/breeding/Paddoc
 
 ---
 
-## 2. Mapping wire courant — message `hlo`
+## 2. Mapping wire courant — message `hsx`
 
-> ⚠️ Section **périssable** : à resynchroniser après chaque patch. Le code
-> (`hlo`) et les n° de champ ci-dessous datent de la dernière capture (2026-06).
+> ⚠️ Section **périssable** : à resynchroniser après chaque patch. Le code monture
+> (`hsx`) et les n° de champ ci-dessous datent du **patch 2026-06**. Le contenu d'enclos
+> est porté par `hrk` → `fnke`(3) → `fnjw`(2) → **`htu`** (l'ex-`him`).
+>
+> `htu` : `fnsl`=2 (jauges carburant `hrm` : valeur `fnkn`=2, élément `fnko`=3),
+> `fnsn`=4 (éléments actifs, `repeated hpd`), `fnso`=5 (map `<string, hsx>` montures).
 
 | n° champ | nom obfusqué | sémantique               | notes |
 |---------:|--------------|--------------------------|-------|
-| 1        | `feai`       | ?                        | jamais vu `true` |
-| 2        | `feaj`       | **nom**                  | seul champ string |
-| 3        | `feal`       | ?                        | `repeated` enum (`hhb`) |
-| 4        | `feam`       | **id d'apparence/robe**  | 91 / 96 (amande) / 97 (ivoire) / 101 (doré+pourpre) |
-| 5        | `fean`       | **niveau**               | |
-| 6        | `feao`       | **expérience**           | numérateur seul (le `/max` est UI/client) |
-| 7        | `feap`       | **généalogie** (robes des 2 parents) | sous-msg `hlm` ; absent = robe de base / parents inconnus |
-| 8        | `feaq`       | ?                        | enum (`hlk`) |
-| 9        | `fear`       | **effets**               | voir §4 |
-| 10       | `feas`       | **sérénité** (signée)    | présente **même si stérile** (l'UI l'affiche « indisponible ») |
-| 11       | `feat`       | **stérile** (`true`)     | |
-| 12       | `feau`       | **sexe mâle** (`true`=♂, absent=♀) | |
-| 13       | `feav`       | **jauges monture**       | voir §3 |
+| 2        | `fnpi`       | **généalogie** (robes des 2 parents) | sous-msg `hsv` ; absent = robe gen 1 / parents inconnus |
+| 3        | `fnpj`       | **id d'apparence/robe**  | 90 (orchidée) / 91 (ébène) / 95 (roux) / 97 (ivoire) |
+| 4        | `fnpk`       | **nom**                  | seul champ string |
+| 5        | `fnpm`       | **niveau**               | seul int ≤ 200 (désambiguïsation par plage) |
+| 6        | `fnpn`       | ?                        | bool, jamais vu `true` |
+| 7        | `fnpo`       | **sérénité** (signée)    | seul int dans ±5000 |
+| 8        | `fnpp`       | **sexe mâle** (`true`=♂, absent=♀) | seul mapping bool donnant 2 sexes |
+| 9        | `fnpq`       | **stérile** (`true`)     | confirmé : n'apparaît QUE sur des montures aux 3 jauges à 20000 |
+| 10       | `fnpr`       | **jauges monture**       | voir §3 |
+| 11       | `fnps`       | **expérience** (?)       | ⚠️ ≈ total de jauges — non critique, à reconfirmer |
+| 13       | `fnpu`       | **effets**               | voir §4 |
 
 Sous-messages :
-- **généalogie** (`hlm`) : `feac`=1 (robe parent 1), `fead`=2 (robe parent 2), `feae`=3 inutilisé.
-  Chaque valeur = id de robe dans le **même espace que `feam`** (table unique
-  `model/breeding/Robes.kt` : `IDS`). Vérifié par capture systématique : Turquoise=`98`,
-  « Roux et Doré »=`115`, « Ébène et Amande »=`120` dans les deux champs. Ordre `feac`/`fead`
-  = parent 1 / parent 2 ; `feap` constant entre frères/sœurs.
-- **jauge** (`hll`) : valeur=1 (`fdzx`), type=2 (`fdzy`, enum `hhd` 0/1/2).
-- **effet** (`kiv`) : id=8 (`fppp`) ; valeur simple=3 (`fpps`) ; effet complexe=7 (`fppy`).
+- **généalogie** (`hsv`) : `fnpb`=1 (robe parent 1), `fnpc`=2 (robe parent 2).
+  Chaque valeur = id de robe dans le **même espace que `fnpj`** (table unique
+  `model/breeding/Robes.kt`/`MuldoRobes.kt`). Confirmé par la capture 2026-06 : une monture
+  Ivoire (robe 97) a pour parents `115` (« Roux et Doré ») et `120` (« Ébène et Amande »),
+  = exactement la recette d'Ivoire.
+- **jauge** (`hsu`) : **type=1 (`fnow`, enum `hpe` 0/1/2), valeur=2 (`fnox`)** ← ordre type/valeur
+  INVERSÉ vs l'ancien `hll`.
+- **effet** (`lip`) : id=11 (`gbpd`) ; valeur simple=10 (`gbpo`) ; effet complexe=7 (`gbpl`).
 
 ---
 
 ## 3. Jauges monture (`feav`) & fertilité — **dérivation client**
 
-3 jauges, valeurs `0..20000`, indexées par l'enum `hhd` :
+3 jauges, valeurs `0..20000`, indexées par l'enum `hpe` (ex-`hhd`, ordinaux conservés) :
 - `type 0` = **amour** (confirmé : bas chez les jeunes, pilote la reproduction)
 - `type 1` = **maturité** ; `type 2` = **endurance** (confirmé en jeu)
 
@@ -128,10 +131,19 @@ d'une monture connue :
 
 ## 6. Contexte enclos (rappel)
 
-- `hlp` (vide) → `hlq` : **lister les enclos** ; `febe` = map `<index 1..6, déverrouillé>`.
-- `hkv { index 1..6 }` : **sélectionner** un enclos (établit le contexte). Réponse `hle`.
-- `hle` : **push du contenu** de l'enclos (`him` : 6 jauges `hhc` + map montures).
-- Jauges de carburant d'enclos (`hhc`, confirmé) : 0 baffeur · 1 caresseur ·
+> ⚠️ Codes resynchronisés au **patch 2026-06** (anciens entre parenthèses).
+
+- `htl` (vide, ex-`hlp`) → `hrd` (ex-`hlq`) : **lister les enclos** ; `fnjg` = map `<index 1..6, déverrouillé>`.
+- `hsi { fnng=3 : index 1..6 }` (ex-`hkv`) : **sélectionner** un enclos. Réponse `hrk`.
+- `hrk` (ex-`hiy`) : **push complet du contenu** → `fnke`(3)→`fnjw`(2)→`htu` (6 jauges `hpd` + map montures).
+- `hpv` (ex-`hle`) : **push de mise à jour** de l'enclos → `fnfr`(2)→`htu`.
+- `htf` (C→S, vide) → `hqp` (ex-`hhv`) : **contenu de l'étable** → `fnhu`(1)→`hqn` ; montures dans
+  `fnho`(1) et/ou `fnhq`(3) (`map<string,hsx>`). Les deux maps sont lues.
+- Jauges de carburant d'enclos (enum `hpd`, ex-`hhc`, ordinaux conservés) : 0 baffeur · 1 caresseur ·
   2 foudroyeur · 3 abreuvoir · 4 dragofesse · 5 mangeoire.
-- Agir sur une jauge = **Request/Response corrélé** (`hhw` activer / `hki` désactiver,
+- Agir sur une jauge = **Request/Response corrélé** (`hse` activer / `hsr` désactiver, ex-`hhw`/`hki`,
   avec `uid`) ; ouvrir/sélectionner = **Events** (`uid` = -1).
+- Transfert montures enclos↔étable : requête C→S `hrq`, réponse S→C `hqb` (ex-`hif`) =
+  map `<uuid, emplacement>` (`fngm`=2).
+- ⚠️ **Étable** (ex-`hhv`) : code/structure **non recapturés** post-patch — `stableMounts` inactif
+  jusqu'à une capture d'ouverture d'étable.

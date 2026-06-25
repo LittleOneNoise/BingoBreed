@@ -25,42 +25,53 @@ class PaddockMapperTest {
             ?: error("Descripteur '$code' introuvable")
 
     @Test
-    fun `decode l'enclos depuis le contenu him`() {
-        val him = desc("him")
-        val hhx = him.findFieldByNumber(2).messageType   // jauge carburant
-        val mountsField = him.findFieldByNumber(3)        // map<string, hlo>
-        val entry = mountsField.messageType               // entrée de map
-        val hlo = entry.findFieldByNumber(2).messageType  // monture
-        val hll = hlo.findFieldByNumber(13).messageType   // jauge monture
-        val kiv = hlo.findFieldByNumber(9).messageType    // effet
+    fun `decode l'enclos depuis le contenu htu`() {
+        // Structure post-patch 2026-06 (cf. PaddockMapper.F) : htu (contenu), hrm (carburant),
+        // hsx (monture), hsu (jauge monture, type=1/valeur=2 inversés), lip (effet).
+        val htu = desc("htu")
+        val hrm = htu.findFieldByNumber(2).messageType    // jauge carburant
+        val mountsField = htu.findFieldByNumber(5)         // map<string, hsx>
+        val entry = mountsField.messageType                // entrée de map
+        val hsx = entry.findFieldByNumber(2).messageType   // monture
+        val hsu = hsx.findFieldByNumber(10).messageType    // jauge monture
+        val lip = hsx.findFieldByNumber(13).messageType    // effet
+        val hsv = hsx.findFieldByNumber(2).messageType     // généalogie
 
-        // Jauge de carburant : valeur 53440, élément #2
-        val fuel = DynamicMessage.newBuilder(hhx)
-            .setField(hhx.findFieldByNumber(2), 53440)
-            .setField(hhx.findFieldByNumber(3), hhx.findFieldByNumber(3).enumType.findValueByNumber(2))
+        // Jauge de carburant : valeur 53440 (fnkn=2), élément #2 (fnko=3)
+        val fuel = DynamicMessage.newBuilder(hrm)
+            .setField(hrm.findFieldByNumber(2), 53440)
+            .setField(hrm.findFieldByNumber(3), hrm.findFieldByNumber(3).enumType.findValueByNumber(2))
             .build()
 
-        // Jauge monture (type hhd / valeur)
-        fun gauge(type: Int, value: Int) = DynamicMessage.newBuilder(hll).apply {
-            setField(hll.findFieldByNumber(1), value)
-            setField(hll.findFieldByNumber(2), hll.findFieldByNumber(2).enumType.findValueByNumber(type))
+        // Jauge monture : type (fnow=1, enum hpe) / valeur (fnox=2)
+        fun gauge(type: Int, value: Int) = DynamicMessage.newBuilder(hsu).apply {
+            setField(hsu.findFieldByNumber(1), hsu.findFieldByNumber(1).enumType.findValueByNumber(type))
+            setField(hsu.findFieldByNumber(2), value)
         }.build()
 
-        // Effet : 138 (Puissance) = 10
-        val effect = DynamicMessage.newBuilder(kiv)
-            .setField(kiv.findFieldByNumber(8), 138)
-            .setField(kiv.findFieldByNumber(3), 10)
+        // Effet : 138 (Puissance, gbpd=11) = 10 (valeur simple gbpo=10)
+        val effect = DynamicMessage.newBuilder(lip)
+            .setField(lip.findFieldByNumber(11), 138)
+            .setField(lip.findFieldByNumber(10), 10)
             .build()
 
-        val mount = DynamicMessage.newBuilder(hlo)
-            .setField(hlo.findFieldByNumber(2), "enclos4monturegen4")
-            .setField(hlo.findFieldByNumber(5), 26)
-            .setField(hlo.findFieldByNumber(6), 8090)
-            .setField(hlo.findFieldByNumber(10), 49)
-            .addRepeatedField(hlo.findFieldByNumber(13), gauge(MountGauge.TYPE_LOVE, 16180))
-            .addRepeatedField(hlo.findFieldByNumber(13), gauge(1, 0))
-            .addRepeatedField(hlo.findFieldByNumber(13), gauge(2, 0))
-            .addRepeatedField(hlo.findFieldByNumber(9), effect)
+        // Généalogie : robes des 2 parents (fnpb=1, fnpc=2)
+        val parents = DynamicMessage.newBuilder(hsv)
+            .setField(hsv.findFieldByNumber(1), 115)
+            .setField(hsv.findFieldByNumber(2), 120)
+            .build()
+
+        val mount = DynamicMessage.newBuilder(hsx)
+            .setField(hsx.findFieldByNumber(3), 97)                    // apparence/robe
+            .setField(hsx.findFieldByNumber(4), "enclos4monturegen4")  // nom
+            .setField(hsx.findFieldByNumber(5), 26)                    // niveau
+            .setField(hsx.findFieldByNumber(7), 49)                    // sérénité
+            .setField(hsx.findFieldByNumber(11), 8090)                 // xp
+            .setField(hsx.findFieldByNumber(2), parents)               // généalogie
+            .addRepeatedField(hsx.findFieldByNumber(10), gauge(MountGauge.TYPE_LOVE, 16180))
+            .addRepeatedField(hsx.findFieldByNumber(10), gauge(1, 0))
+            .addRepeatedField(hsx.findFieldByNumber(10), gauge(2, 0))
+            .addRepeatedField(hsx.findFieldByNumber(13), effect)
             .build()
 
         val mapEntry = DynamicMessage.newBuilder(entry)
@@ -68,9 +79,9 @@ class PaddockMapperTest {
             .setField(entry.findFieldByNumber(2), mount)
             .build()
 
-        val content = DynamicMessage.newBuilder(him)
-            .addRepeatedField(him.findFieldByNumber(2), fuel)
-            .addRepeatedField(him.findFieldByNumber(3), mapEntry)
+        val content = DynamicMessage.newBuilder(htu)
+            .addRepeatedField(htu.findFieldByNumber(2), fuel)
+            .addRepeatedField(htu.findFieldByNumber(5), mapEntry)
             .build()
 
         val paddock = PaddockMapper.fromContent(content)
@@ -81,16 +92,17 @@ class PaddockMapperTest {
         val m = paddock.mounts["e4c09997-96e5-46d7-b753-8500b83091b8"]
         assertNotNull(m)
         assertEquals("enclos4monturegen4", m.name)
+        assertEquals(97, m.appearanceId)
         assertEquals(26, m.level)
         assertEquals(8090, m.experience)
         assertEquals(49, m.serenity)
         assertEquals(16180, m.gauges.first { it.type == MountGauge.TYPE_LOVE }.value)
         assertEquals(10, m.effects.first { it.effectId == 138 }.value)
-        // Champs ajoutés post-refonte : défauts du sample (♀, fertile, sans généalogie).
+        assertEquals(listOf(115, 120), m.parents)
+        // Sample : ♀ (sex absent), non stérile → fertile.
         assertEquals(Sex.FEMALE, m.sex)
         assertEquals(false, m.sterile)
         assertEquals(Fertility.FERTILE, m.fertility)
-        assertEquals(emptyList(), m.parents)
     }
 
     @Test

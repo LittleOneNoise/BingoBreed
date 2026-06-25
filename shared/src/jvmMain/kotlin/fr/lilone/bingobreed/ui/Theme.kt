@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.Color
 import fr.lilone.bingobreed.sniffer.model.breeding.Fertility
 import fr.lilone.bingobreed.sniffer.model.breeding.FuelTier
 import fr.lilone.bingobreed.sniffer.model.breeding.MountGauge
+import fr.lilone.bingobreed.sniffer.model.breeding.MuldoRobes
 import fr.lilone.bingobreed.sniffer.model.breeding.SerenityBand
 import fr.lilone.bingobreed.sniffer.model.breeding.Sex
 
@@ -99,5 +100,13 @@ fun fuelColor(element: Int): Color = when (element) {
     else -> BreedColors.serenityGreen // mangeoire → XP (texte)
 }
 
-/** Couleur stable dérivée d'un id de robe (faute de mapping robe → couleur réel). */
-fun robeColor(id: Int): Color = Color.hsv((id * 47 % 360).toFloat(), 0.55f, 0.85f)
+/**
+ * Couleur stable dérivée d'un id de robe (faute de mapping robe → couleur réel). La teinte est
+ * ramenée dans `[0,360)` même si `id` est grand/négatif (ex. dérivé d'un hashCode) — sinon
+ * `Color.hsv` lève (teinte hors plage).
+ */
+fun robeColor(id: Int): Color = Color.hsv(((id * 47) % 360 + 360) % 360f, 0.55f, 0.85f)
+
+/** Couleur stable d'une robe par **nom** : via son id réseau si connu, sinon dérivée du nom. */
+fun robeColorByName(name: String): Color =
+    robeColor(MuldoRobes.byName(name)?.networkId ?: (name.hashCode() and 0x7fffffff))

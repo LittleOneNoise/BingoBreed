@@ -243,6 +243,10 @@ class SnifferEngine(
                             AchievementMapper.detailedAchievements(decoded, dynamic, lastAchievementCategory)?.let { list ->
                                 _achievements.update { it + list.associateBy(Achievement::id) }
                             }
+                            // Liste générale `mdz` (vue d'ensemble à l'ouverture des succès) — complète l'index.
+                            AchievementMapper.listedAchievements(decoded, dynamic)?.let { list ->
+                                _achievements.update { it + list.associateBy(Achievement::id) }
+                            }
 
                             PaddockMapper.fromGameMessage(decoded, dynamic)?.let { paddock ->
                                 val withId = paddock.copy(id = lastPaddockIndex)

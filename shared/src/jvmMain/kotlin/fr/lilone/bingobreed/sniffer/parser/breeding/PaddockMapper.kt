@@ -12,78 +12,84 @@ import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
 import fr.lilone.bingobreed.sniffer.model.breeding.Sex
 
 /**
- * Transforme le [Message] (DynamicMessage) d'un message d'enclos en [Paddock].
- *  - code `hiy` : état complet de l'enclos
- *  - code `hle` : mise à jour de l'enclos
+ * Transforme le [Message] (DynamicMessage) d'un message d'élevage en [Paddock] / montures.
  *
- * ⚠️ **Couche fragile au patch.** Les numéros de champ ([F]) viennent de
- * `output.proto` (protodec) et doivent être resynchronisés après une MAJ Dofus :
- * c'est le **seul** endroit à mettre à jour. Tout le reste (modèle de domaine,
+ * ⚠️ **Couche fragile au patch.** Toute l'identité **wire** obfusquée (codes `type_url` 3 lettres
+ * dans [CODE_CONTENT] etc., numéros de champ dans [F]) est isolée ici : c'est le **seul** endroit
+ * à resynchroniser après une MAJ Dofus. Les **noms** de constantes sont **sémantiques et stables**
+ * (ex. [F.MOUNTS], pas `HTU_MOUNTS`) → un patch ne change que des **valeurs** + leur commentaire
+ * d'identité, jamais le corps des mappers ni les appelants. Le reste (modèle de domaine,
  * descripteur, DynamicMessage) est robuste.
  */
 object PaddockMapper {
 
-    /** Codes type_url (sans préfixe `type.ankama.com/`). À ré-identifier après patch. */
-    const val CODE_FULL = "hiy"
-    const val CODE_UPDATE = "hle"
-    const val CODE_SELECT = "hkv" // C→S : sélection d'un enclos (porte l'index)
-    const val CODE_TRANSFER = "hif" // S→C : changement d'emplacement de montures (enclos↔étable)
-    const val CODE_STABLE = "hhv" // S→C : contenu complet de l'étable
-    const val CODE_GAUGE_ON = "hhw" // C→S : activer une jauge
-    const val CODE_GAUGE_OFF = "hki" // C→S : désactiver une jauge
-    const val CODE_GAUGE_ON_RESP = "hjj" // S→C : réponse d'activation (jauges auto-désactivées)
+    /**
+     * Codes type_url (sans préfixe `type.ankama.com/`). À ré-identifier après patch.
+     * Resynchronisés au patch 2026-06 (cf. README §2). Les noms obfusqués sont relevés dans les
+     * logs de diagnostic puis croisés avec `output.proto` pour leurs numéros de champ.
+     */
+    const val CODE_CONTENT = "hrk"        // S→C : push complet du contenu de l'enclos (fnke→fnjw→htu)
+    const val CODE_UPDATE = "hpv"         // S→C : push de mise à jour de l'enclos (fnfr→htu)
+    const val CODE_SELECT = "hsi"         // C→S : sélection d'un enclos (porte l'index)
+    const val CODE_TRANSFER = "hqb"       // S→C : changement d'emplacement de montures (enclos↔étable)
+    const val CODE_STABLE = "hqp"         // S→C : contenu de l'étable (réponse à `htf`)
+    const val CODE_GAUGE_ON = "hse"       // C→S : activer une jauge
+    const val CODE_GAUGE_OFF = "hsr"      // C→S : désactiver une jauge
+    const val CODE_GAUGE_ON_RESP = "hpr"  // S→C : réponse d'activation (jauges auto-désactivées)
 
-    /** Numéros de champ — UNIQUE point de resynchronisation après un patch. */
+    /**
+     * Numéros de champ wire — UNIQUE point de resynchronisation après un patch. Noms **sémantiques**
+     * (jamais à renommer) ; ne mettre à jour que la **valeur** et le **commentaire d'identité**
+     * (`message.champ`). Identité courante : patch 2026-06.
+     */
     private object F {
-        // hiy { fdrs=1 (enum hiw) ; fdrt=2 : him } — pas d'id d'enclos transmis
-        const val HIY_CONTENT = 2
-        // hle { oneof { fdzc=2 : hlc } } ; hlc { fdyv=1 (enum hhf, flag) ; fdyw=2 : him }
-        const val HLE_HLC = 2
-        const val HLC_CONTENT = 2
-        // hkv { fdxp=1 ; oneof { fdxq=2 int32 index enclos ; fdxs=3 } }
-        const val HKV_INDEX = 2
-        // hif { fdpn=1 map<string,hid> ; fdpo=2 map<string,hid> } — montures déplacées (clé=UUID)
-        const val HIF_MAP_A = 1
-        const val HIF_MAP_B = 2
-        // hhv { fdoh=3 ; oneof { fdoi=1 : hht ; fdoj=2 } } ; hht { fdoc=1 map<string,hlo> }
-        const val HHV_HHT = 1
-        const val HHT_MOUNTS = 1
-        // hhw (activer) { fdop=1 ; fdoq=2 hhc } ; hki (désactiver) { fdvw=1 hhc }
-        const val HHW_ELEMENT = 2
-        const val HKI_ELEMENT = 1
-        // hjj { oneof { fdsu=1 ; fdsw=3 : hjh } } ; hjh { fdsp=1 repeated hhc } — auto-désactivées
-        const val HJJ_FDSW = 3
-        const val FDSW_ELEMENTS = 1
-        // him { fdql=1 repeated enum ; fdqm=2 repeated hhx ; fdqn=3 map<string,hlo> }
-        const val HIM_ACTIVE_ELEMENTS = 1
-        const val HIM_FUEL_GAUGES = 2
-        const val HIM_MOUNTS = 3
-        // hhx (jauge carburant) { fdov=2 valeur ; fdow=3 élément (hhc) }
-        const val FUEL_VALUE = 2
-        const val FUEL_ELEMENT = 3
-        // hlo (monture) { feam=4 apparence ; feaj=2 nom ; fean=5 niveau ; feao=6 xp ;
-        //   feap=7 couleurs ; fear=9 effets ; feas=10 sérénité ; feat=11 stérile ;
-        //   feau=12 sexe(mâle) ; feav=13 jauges }
-        const val MOUNT_APPEARANCE = 4
-        const val MOUNT_NAME = 2
-        const val MOUNT_LEVEL = 5
-        const val MOUNT_XP = 6
-        const val MOUNT_PARENTS = 7 // feap : robes des 2 parents (généalogie)
-        const val MOUNT_EFFECTS = 9
-        const val MOUNT_SERENITY = 10
-        const val MOUNT_STERILE = 11
-        const val MOUNT_SEX = 12
-        const val MOUNT_GAUGES = 13
-        // hlm (généalogie) { feac=1 robe parent 1 ; fead=2 robe parent 2 ; feae=3 inutilisé }
-        const val PARENT_1 = 1
-        const val PARENT_2 = 2
-        // hll (jauge monture) { fdzx=1 valeur ; fdzy=2 type (hhd) }
-        const val MGAUGE_VALUE = 1
-        const val MGAUGE_TYPE = 2
-        // kiv (effet) { fppp=8 id ; oneof { fpps=3 valeur simple } }
-        const val EFFECT_ID = 8
-        const val EFFECT_VALUE = 3
-        // entrée de map protobuf
+        // Contenu complet d'enclos : `hrk`.fnke(3) → hri.fnjw(2) → htu
+        const val CONTENT_WRAPPER = 3     // hrk.fnke → hri
+        const val CONTENT_BODY = 2        // hri.fnjw → htu (jauges + montures)
+        // Mise à jour d'enclos : `hpv`.fnfr(2) → htu
+        const val UPDATE_BODY = 2         // hpv.fnfr → htu
+        // Sélection d'enclos : `hsi`.fnng(3) int32 (index 1..6)
+        const val SELECT_INDEX = 3        // hsi.fnng
+        // Transfert de montures : `hqb`.fngm(2) map<string,hpz> (clé = UUID)
+        const val TRANSFER_MAP = 2        // hqb.fngm
+        // (Dés)activation d'une jauge : élément hpd
+        const val GAUGE_ON_ELEMENT = 2    // hse.fnmw
+        const val GAUGE_OFF_ELEMENT = 3   // hsr.fnoh
+        // Réponse d'activation (jauges auto-désactivées) : `hpr`.fnfc(2) → hpp.fnev(2) rep hpd
+        const val GAUGE_RESP_BODY = 2     // hpr.fnfc → hpp  (⚠️ liste à confirmer, capture vide)
+        const val GAUGE_RESP_ELEMENTS = 2 // hpp.fnev
+        // Étable : `hqp`.fnhu(1) → hqn ; montures dans fnho(1) et/ou fnhq(3) <string,hsx>
+        const val STABLE_WRAPPER = 1      // hqp.fnhu → hqn
+        const val STABLE_MOUNTS_A = 1     // hqn.fnho
+        const val STABLE_MOUNTS_B = 3     // hqn.fnhq
+        // Contenu d'enclos (htu)
+        const val ACTIVE_ELEMENTS = 4     // htu.fnsn  rep hpd
+        const val FUEL_GAUGES = 2         // htu.fnsl  rep hrm
+        const val MOUNTS = 5              // htu.fnso  map<string,hsx>
+        // Jauge carburant (hrm)
+        const val FUEL_VALUE = 2          // hrm.fnkn
+        const val FUEL_ELEMENT = 3        // hrm.fnko  hpd
+        // Monture (hsx) — cf. README §2. Ints désambiguïsés par plage ; bools par sanity.
+        const val MOUNT_APPEARANCE = 3    // hsx.fnpj
+        const val MOUNT_NAME = 4          // hsx.fnpk (seul string)
+        const val MOUNT_LEVEL = 5         // hsx.fnpm (seul int ≤ 200)
+        const val MOUNT_XP = 11           // hsx.fnps (≈ total jauges ; non critique)
+        const val MOUNT_PARENTS = 2       // hsx.fnpi (sous-msg hsv)
+        const val MOUNT_EFFECTS = 13      // hsx.fnpu
+        const val MOUNT_SERENITY = 7      // hsx.fnpo (seul int dans ±5000)
+        const val MOUNT_STERILE = 9       // hsx.fnpq (true ; n'apparaît que sur jauges max)
+        const val MOUNT_SEX = 8           // hsx.fnpp (true=mâle ; fnpn=6 = bool inconnu)
+        const val MOUNT_GAUGES = 10       // hsx.fnpr  rep hsu
+        // Généalogie (hsv)
+        const val PARENT_1 = 1            // hsv.fnpb
+        const val PARENT_2 = 2            // hsv.fnpc
+        // Jauge monture (hsu)
+        const val MGAUGE_TYPE = 1         // hsu.fnow  hpe
+        const val MGAUGE_VALUE = 2        // hsu.fnox
+        // Effet (lip)
+        const val EFFECT_ID = 11          // lip.gbpd
+        const val EFFECT_VALUE = 10       // lip.gbpo (valeur simple ; complexe = gbpl=7)
+        // Entrée de map protobuf (standard)
         const val MAP_KEY = 1
         const val MAP_VALUE = 2
     }
@@ -92,76 +98,70 @@ object PaddockMapper {
     fun fromGameMessage(message: DecodedGameAny, dynamic: Message?): Paddock? {
         val msg = dynamic ?: return null
         return when (message.code) {
-            CODE_FULL -> fromFull(msg)
-            CODE_UPDATE -> fromUpdate(msg)
+            CODE_CONTENT -> msg.msg(F.CONTENT_WRAPPER)?.msg(F.CONTENT_BODY)?.let(::fromContent)
+            CODE_UPDATE -> msg.msg(F.UPDATE_BODY)?.let(::fromContent)
             else -> null
         }
     }
 
-    /** Index d'enclos (1..6) d'une requête de sélection `hkv`, ou null si autre message. */
+    /** Index d'enclos (1..6) d'une requête de sélection, ou null si autre message. */
     fun selectedPaddockIndex(message: DecodedGameAny, dynamic: Message?): Int? {
         if (message.code != CODE_SELECT) return null
-        return dynamic?.intOrNull(F.HKV_INDEX)
+        return dynamic?.intOrNull(F.SELECT_INDEX)
     }
 
     /**
-     * UUIDs des montures dont l'emplacement vient de changer (réponse `hif`), ou null si ce
-     * n'est pas un `hif`. Le sens (entrée/sortie d'enclos) se déduit côté appelant via l'état.
+     * UUIDs des montures dont l'emplacement vient de changer (réponse de transfert), ou null si ce
+     * n'est pas ce message. Le sens (entrée/sortie d'enclos) se déduit côté appelant via l'état.
      */
     fun transferredMountIds(message: DecodedGameAny, dynamic: Message?): Set<String>? {
         if (message.code != CODE_TRANSFER) return null
         val msg = dynamic ?: return null
-        val a = msg.messageList(F.HIF_MAP_A).mapNotNull { it.str(F.MAP_KEY) }
-        val b = msg.messageList(F.HIF_MAP_B).mapNotNull { it.str(F.MAP_KEY) }
-        return (a + b).toSet().ifEmpty { null }
+        return msg.messageList(F.TRANSFER_MAP).mapNotNull { it.str(F.MAP_KEY) }.toSet().ifEmpty { null }
     }
 
-    /** Élément de jauge venant d'être **activé** (requête `hhw`), ou null si autre message. */
+    /** Élément de jauge venant d'être **activé**, ou null si autre message. */
     fun activatedElement(message: DecodedGameAny, dynamic: Message?): Int? {
         if (message.code != CODE_GAUGE_ON) return null
-        return dynamic?.enumNumber(F.HHW_ELEMENT)?.takeIf { it >= 0 }
+        return dynamic?.enumNumber(F.GAUGE_ON_ELEMENT)?.takeIf { it >= 0 }
     }
 
-    /** Élément de jauge venant d'être **désactivé** (requête `hki`), ou null si autre message. */
+    /** Élément de jauge venant d'être **désactivé**, ou null si autre message. */
     fun deactivatedElement(message: DecodedGameAny, dynamic: Message?): Int? {
         if (message.code != CODE_GAUGE_OFF) return null
-        return dynamic?.enumNumber(F.HKI_ELEMENT)?.takeIf { it >= 0 }
+        return dynamic?.enumNumber(F.GAUGE_OFF_ELEMENT)?.takeIf { it >= 0 }
     }
 
     /**
-     * Jauges **auto-désactivées** par le serveur suite à une activation (réponse `hjj`) :
-     * application des règles « 1 jauge de sérénité » et « 2 jauges max » (éviction FIFO).
-     * Liste vide si rien n'a été désactivé ; null si ce n'est pas un `hjj`.
+     * Jauges **auto-désactivées** par le serveur suite à une activation : application des règles
+     * « 1 jauge de sérénité » et « 2 jauges max » (éviction FIFO). Liste vide si rien n'a été
+     * désactivé ; null si ce n'est pas la réponse d'activation.
      */
     fun autoDeactivatedElements(message: DecodedGameAny, dynamic: Message?): List<Int>? {
         if (message.code != CODE_GAUGE_ON_RESP) return null
-        val fdsw = dynamic?.msg(F.HJJ_FDSW) ?: return emptyList()
-        return fdsw.enumList(F.FDSW_ELEMENTS)
+        val body = dynamic?.msg(F.GAUGE_RESP_BODY) ?: return emptyList()
+        return body.enumList(F.GAUGE_RESP_ELEMENTS)
     }
 
-    /** Montures de l'étable (`hhv`) indexées par UUID, ou null si autre message / étable absente. */
+    /** Montures de l'étable indexées par UUID, ou null si autre message / étable absente. */
     fun stableMounts(message: DecodedGameAny, dynamic: Message?): Map<String, Mount>? {
         if (message.code != CODE_STABLE) return null
-        val hht = dynamic?.msg(F.HHV_HHT) ?: return null
-        return hht.messageList(F.HHT_MOUNTS).mapNotNull { entry ->
+        val wrapper = dynamic?.msg(F.STABLE_WRAPPER) ?: return null
+        val entries = wrapper.messageList(F.STABLE_MOUNTS_A) + wrapper.messageList(F.STABLE_MOUNTS_B)
+        return entries.mapNotNull { entry ->
             val uuid = entry.str(F.MAP_KEY) ?: return@mapNotNull null
             val value = entry.msg(F.MAP_VALUE) ?: return@mapNotNull null
             uuid to toMount(uuid, value)
         }.toMap().ifEmpty { null }
     }
 
-    fun fromFull(hiy: Message): Paddock? = hiy.msg(F.HIY_CONTENT)?.let(::fromContent)
-
-    fun fromUpdate(hle: Message): Paddock? =
-        hle.msg(F.HLE_HLC)?.msg(F.HLC_CONTENT)?.let(::fromContent)
-
-    /** Cœur du mapping : un message `him` → [Paddock]. */
-    fun fromContent(him: Message): Paddock = Paddock(
-        activeElements = him.enumList(F.HIM_ACTIVE_ELEMENTS),
-        fuelGauges = him.messageList(F.HIM_FUEL_GAUGES).map { gauge ->
+    /** Cœur du mapping : le contenu d'enclos (jauges + montures) → [Paddock]. */
+    fun fromContent(content: Message): Paddock = Paddock(
+        activeElements = content.enumList(F.ACTIVE_ELEMENTS),
+        fuelGauges = content.messageList(F.FUEL_GAUGES).map { gauge ->
             FuelGauge(element = gauge.enumNumber(F.FUEL_ELEMENT), value = gauge.int(F.FUEL_VALUE))
         },
-        mounts = him.messageList(F.HIM_MOUNTS).mapNotNull { entry ->
+        mounts = content.messageList(F.MOUNTS).mapNotNull { entry ->
             val uuid = entry.str(F.MAP_KEY) ?: return@mapNotNull null
             val value = entry.msg(F.MAP_VALUE) ?: return@mapNotNull null
             uuid to toMount(uuid, value)
