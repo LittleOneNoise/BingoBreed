@@ -103,7 +103,7 @@ class DofusConfigProvider(
          * référence pour [checkVersion]. À mettre à jour à chaque réalignement des
          * descripteurs / du parsing protobuf sur une nouvelle version du client.
          */
-        const val DOFUS_CLIENT_VERSION_REFERENCE = "3.5.17.26"
+        const val DOFUS_CLIENT_VERSION_REFERENCE = "3.6.4.3"
 
         /**
          * Fichier `version` du client, sous le `Dofus_Data` de l'install Ankama. Résolu via
