@@ -1,6 +1,7 @@
 package fr.lilone.bingobreed.breeding
 
 import fr.lilone.bingobreed.sniffer.model.breeding.Fertility
+import fr.lilone.bingobreed.sniffer.model.breeding.MuldoRobes
 import fr.lilone.bingobreed.sniffer.model.breeding.Sex
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,12 +11,36 @@ import kotlin.test.assertTrue
 class ReproPlannerTest {
 
     private var seq = 0
-    private fun mount(robe: String, fert: Fertility, sex: Sex = Sex.FEMALE, level: Int = 100, gaugeTotal: Int = 0) =
-        OwnedMount("uuid-${seq++}", "M$seq", robe, sex, level, fert, serenity = 0, gaugeTotal = gaugeTotal)
+    private fun mount(
+        robe: String,
+        fert: Fertility,
+        sex: Sex = Sex.FEMALE,
+        level: Int = 100,
+        gaugeTotal: Int = 0,
+        serenity: Int = 0,
+        location: MountLocation = MountLocation.Stable,
+        consumed: Boolean = false,
+    ) = OwnedMount(
+        uuid = "uuid-${seq++}",
+        name = "M$seq",
+        robe = robe,
+        sex = sex,
+        level = level,
+        fertility = fert,
+        serenity = serenity,
+        gaugeTotal = gaugeTotal,
+        location = location,
+        consumed = consumed,
+    )
 
     private fun stockOf(vararg mounts: OwnedMount) = OwnedStock(mounts.toList().groupBy { it.robe })
 
     private val empty = OwnedStock(emptyMap())
+
+    /** Première action de la checklist (toutes confondues), pour les scénarios à 1 robe restante. */
+    private fun firstAction(plan: ReproPlan) = plan.steps.first().action
+    private fun readyTargets(plan: ReproPlan) =
+        plan.stepsOf(StepStatus.READY).map { (it.action as NextAction.Cross).target }
 
     @Test
     fun calcPMatchesModel() {
@@ -34,36 +59,28 @@ class ReproPlannerTest {
     }
 
     @Test
-    fun nextActionFromEmptyStockIsACapture() {
+    fun emptyStockYieldsACaptureToPrepare() {
         val plan = ReproPlanner.plan(listOf("Roux"), empty, optimakina = false)
-        val next = plan.nextAction
+        val next = firstAction(plan)
         assertIs<NextAction.Capture>(next)
-        assertTrue(next.robe in fr.lilone.bingobreed.sniffer.model.breeding.MuldoRobes.GEN1)
+        assertTrue(next.robe in MuldoRobes.GEN1)
+        assertEquals(StepStatus.TO_PREPARE, plan.steps.first().status)
     }
 
     @Test
-    fun cascadeIsPrunedAtRobesAlreadyInStock() {
-        val stock = stockOf(
-            mount("Doré et Pourpre", Fertility.FECONDE, Sex.FEMALE),
-            mount("Doré et Orchidée", Fertility.FECONDE, Sex.MALE),
-        )
-        val cascade = ReproPlanner.buildCascade("Roux", stock)
-        assertEquals(listOf("Roux"), cascade.map { it.target }) // les 2 parents fécondes sont élagués
-    }
-
-    @Test
-    fun bothParentsFecondeGivesACrossWithProbability() {
+    fun bothParentsFecondeGivesAReadyCrossWithProbability() {
         val stock = stockOf(
             mount("Doré et Pourpre", Fertility.FECONDE, Sex.FEMALE, level = 150),
             mount("Doré et Orchidée", Fertility.FECONDE, Sex.MALE, level = 150),
         )
         val plan = ReproPlanner.plan(listOf("Roux"), stock, optimakina = false)
-        val next = plan.nextAction
-        assertIs<NextAction.Cross>(next)
-        assertEquals("Roux", next.target)
-        assertEquals(Sex.FEMALE, next.mother.sex)
-        assertEquals(Sex.MALE, next.father.sex)
-        assertEquals(BreedingProbability.calcP(150, 150, false), next.pSuccess, 1e-9)
+        val ready = plan.stepsOf(StepStatus.READY)
+        assertEquals(1, ready.size)
+        val cross = ready.first().action as NextAction.Cross
+        assertEquals("Roux", cross.target)
+        assertEquals(Sex.FEMALE, cross.mother.sex)
+        assertEquals(Sex.MALE, cross.father.sex)
+        assertEquals(BreedingProbability.calcP(150, 150, false), cross.pSuccess, 1e-9)
     }
 
     @Test
@@ -74,35 +91,103 @@ class ReproPlannerTest {
             mount("Doré et Orchidée", Fertility.FECONDE, Sex.MALE),
         )
         val plan = ReproPlanner.plan(listOf("Roux"), stock, optimakina = false)
-        val next = plan.nextAction
+        val next = firstAction(plan)
         assertIs<NextAction.RaiseGauges>(next)
         assertEquals("Doré et Pourpre", next.mount.robe)
+        // Hors enclos → à préparer, pas en cours.
+        assertEquals(StepStatus.TO_PREPARE, plan.steps.first { it.action is NextAction.RaiseGauges }.status)
+    }
+
+    @Test
+    fun raisingInActiveEnclosIsInProgress() {
+        // Même scénario, mais la fertile est dans l'enclos avec la jauge amour active → "en cours".
+        val stock = stockOf(
+            mount(
+                "Doré et Pourpre", Fertility.FERTILE, Sex.FEMALE,
+                serenity = 3000, // bande GREEN → amour montable
+                location = MountLocation.Paddock(1),
+            ),
+            mount("Doré et Orchidée", Fertility.FECONDE, Sex.MALE),
+        )
+        // Élément actif 4 = dragofesse (amour).
+        val plan = ReproPlanner.plan(listOf("Roux"), stock, optimakina = false, activeElements = setOf(4))
+        val raise = plan.steps.first { it.action is NextAction.RaiseGauges }
+        assertEquals(StepStatus.IN_PROGRESS, raise.status)
     }
 
     @Test
     fun twoSterilesAreClonedBeforeRecreating() {
-        // Priorité : cloner ≥2 stériles identiques plutôt que refabriquer la robe.
         val stock = stockOf(
             mount("Doré et Pourpre", Fertility.STERILE, Sex.FEMALE),
             mount("Doré et Pourpre", Fertility.STERILE, Sex.MALE),
             mount("Doré et Orchidée", Fertility.FECONDE, Sex.MALE),
         )
         val plan = ReproPlanner.plan(listOf("Roux"), stock, optimakina = false)
-        val next = plan.nextAction
-        assertIs<NextAction.Clone>(next)
-        assertEquals("Doré et Pourpre", next.robe)
+        assertIs<NextAction.Clone>(firstAction(plan))
     }
 
     @Test
     fun loneSterileRecreatesInsteadOfCloning() {
-        // 1 seule stérile (clone impossible) → on recrée la robe (ici via capture des gen 1 amont).
         val stock = stockOf(
             mount("Doré et Pourpre", Fertility.STERILE, Sex.FEMALE),
             mount("Doré et Orchidée", Fertility.FECONDE, Sex.MALE),
         )
         val plan = ReproPlanner.plan(listOf("Roux"), stock, optimakina = false)
-        // La prochaine action descend recréer « Doré et Pourpre » → capture d'une gen 1.
-        assertIs<NextAction.Capture>(plan.nextAction)
+        assertIs<NextAction.Capture>(firstAction(plan))
+    }
+
+    @Test
+    fun readyCrossSurfacesEvenWithLowerGenRobeRemaining() {
+        // Le scénario du joueur : un Prune + un Ivoire fécondes de sexes opposés, et « Prune et Ivoire »
+        // (gen 8) reste à faire. Même si une robe gen 1 reste à capturer, le croisement réalisable
+        // tout de suite est dans « Prêt maintenant ».
+        val stock = stockOf(
+            mount("Prune", Fertility.FECONDE, Sex.FEMALE, level = 120),
+            mount("Ivoire", Fertility.FECONDE, Sex.MALE, level = 130),
+        )
+        val plan = ReproPlanner.plan(listOf("Ébène", "Prune et Ivoire"), stock, optimakina = false)
+        assertEquals(listOf("Prune et Ivoire"), readyTargets(plan))
+        val cross = plan.stepsOf(StepStatus.READY).first().action as NextAction.Cross
+        assertEquals("Prune", cross.mother.robe)   // la femelle
+        assertEquals("Ivoire", cross.father.robe)  // le mâle
+        // La gen 1 restante reste à capturer.
+        assertTrue(plan.stepsOf(StepStatus.TO_PREPARE).any { (it.action as? NextAction.Capture)?.robe == "Ébène" })
+    }
+
+    @Test
+    fun twoFecondesSameSexIsNotReady() {
+        val stock = stockOf(
+            mount("Prune", Fertility.FECONDE, Sex.MALE),
+            mount("Ivoire", Fertility.FECONDE, Sex.MALE),
+        )
+        val plan = ReproPlanner.plan(listOf("Prune et Ivoire"), stock, optimakina = false)
+        assertTrue(plan.stepsOf(StepStatus.READY).isEmpty())
+        assertIs<NextAction.NeedOppositeSex>(firstAction(plan))
+    }
+
+    @Test
+    fun readyCrossesAreListedHighestGenFirst() {
+        val stock = stockOf(
+            mount("Prune", Fertility.FECONDE, Sex.FEMALE),
+            mount("Ivoire", Fertility.FECONDE, Sex.MALE),
+            mount("Doré", Fertility.FECONDE, Sex.FEMALE),
+            mount("Pourpre", Fertility.FECONDE, Sex.MALE),
+        )
+        val plan = ReproPlanner.plan(listOf("Doré et Pourpre", "Prune et Ivoire"), stock, optimakina = false)
+        // Génération décroissante : « Prune et Ivoire » (gen 8) avant « Doré et Pourpre » (gen 2).
+        assertEquals(listOf("Prune et Ivoire", "Doré et Pourpre"), readyTargets(plan))
+    }
+
+    @Test
+    fun consumedMountIsExcludedAndShownJustBred() {
+        // Prune fécond mais consommé (vient d'être accouplé) → pas de croisement prêt, listé "juste accouplé".
+        val stock = stockOf(
+            mount("Prune", Fertility.FECONDE, Sex.FEMALE, consumed = true),
+            mount("Ivoire", Fertility.FECONDE, Sex.MALE),
+        )
+        val plan = ReproPlanner.plan(listOf("Prune et Ivoire"), stock, optimakina = false)
+        assertTrue(plan.stepsOf(StepStatus.READY).isEmpty())
+        assertEquals(listOf("Prune"), plan.justBred.map { it.robe })
     }
 
     @Test

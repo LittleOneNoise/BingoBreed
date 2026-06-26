@@ -179,6 +179,14 @@ object MuldoRobes {
      */
     fun resolve(looseName: String): MuldoRobe? = BY_NAME[looseName] ?: BY_KEY[normKey(looseName)]
 
+    /**
+     * Clé de **fichier image** stable d'une robe : dérivée de [normKey] (sans accents, minuscule,
+     * couleurs triées → ordre indifférent), jointe par « _ » pour rester un nom de fichier valide.
+     * Sert de pont avec les images DofusDB téléchargées (cf. `tools/MuldoImageDownloader`) et au
+     * chargement runtime (`ui/RobeImages`). Ex. « Prune et Ivoire » → « ivoire_prune ».
+     */
+    fun imageKey(name: String): String = normKey(name).replace("|", "_")
+
     /** Clé normalisée : sans accents, minuscule, couleurs triées (ordre indifférent). */
     private fun normKey(name: String): String =
         java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFD)

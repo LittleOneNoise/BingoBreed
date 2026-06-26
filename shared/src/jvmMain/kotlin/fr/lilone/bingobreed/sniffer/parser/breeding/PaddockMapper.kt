@@ -36,6 +36,7 @@ object PaddockMapper {
     const val CODE_GAUGE_ON = "hse"       // C→S : activer une jauge
     const val CODE_GAUGE_OFF = "hsr"      // C→S : désactiver une jauge
     const val CODE_GAUGE_ON_RESP = "hpr"  // S→C : réponse d'activation (jauges auto-désactivées)
+    const val CODE_BREED = "htq"          // C→S : clic « Accoupler » (porte les 2 UUID parents)
 
     /**
      * Numéros de champ wire — UNIQUE point de resynchronisation après un patch. Noms **sémantiques**
@@ -55,6 +56,9 @@ object PaddockMapper {
         // (Dés)activation d'une jauge : élément hpd
         const val GAUGE_ON_ELEMENT = 2    // hse.fnmw
         const val GAUGE_OFF_ELEMENT = 3   // hsr.fnoh
+        // Accouplement : `htq` porte les 2 UUID parents (string), fnrr(1) et fnru(3)
+        const val BREED_PARENT_1 = 1      // htq.fnrr
+        const val BREED_PARENT_2 = 3      // htq.fnru
         // Réponse d'activation (jauges auto-désactivées) : `hpr`.fnfc(2) → hpp.fnev(2) rep hpd
         const val GAUGE_RESP_BODY = 2     // hpr.fnfc → hpp  (⚠️ liste à confirmer, capture vide)
         const val GAUGE_RESP_ELEMENTS = 2 // hpp.fnev
@@ -118,6 +122,17 @@ object PaddockMapper {
         if (message.code != CODE_TRANSFER) return null
         val msg = dynamic ?: return null
         return msg.messageList(F.TRANSFER_MAP).mapNotNull { it.str(F.MAP_KEY) }.toSet().ifEmpty { null }
+    }
+
+    /**
+     * UUIDs des 2 montures **venant d'être accouplées** (clic « Accoupler », `htq`), ou null si ce
+     * n'est pas ce message. Les parents sont alors **consommés** (jauges remises à zéro côté jeu) :
+     * l'appelant les retire du calcul du planificateur jusqu'à un état frais qui les rétablit.
+     */
+    fun bredPair(message: DecodedGameAny, dynamic: Message?): Set<String>? {
+        if (message.code != CODE_BREED) return null
+        val msg = dynamic ?: return null
+        return setOfNotNull(msg.str(F.BREED_PARENT_1), msg.str(F.BREED_PARENT_2)).ifEmpty { null }
     }
 
     /** Élément de jauge venant d'être **activé**, ou null si autre message. */

@@ -2,6 +2,8 @@ package fr.lilone.bingobreed.sniffer
 
 import com.google.protobuf.Descriptors.Descriptor
 import com.google.protobuf.DynamicMessage
+import fr.lilone.bingobreed.sniffer.model.DecodedGameAny
+import fr.lilone.bingobreed.sniffer.model.Direction
 import fr.lilone.bingobreed.sniffer.model.breeding.Fertility
 import fr.lilone.bingobreed.sniffer.model.breeding.MountGauge
 import fr.lilone.bingobreed.sniffer.model.breeding.Sex
@@ -103,6 +105,29 @@ class PaddockMapperTest {
         assertEquals(Sex.FEMALE, m.sex)
         assertEquals(false, m.sterile)
         assertEquals(Fertility.FERTILE, m.fertility)
+    }
+
+    @Test
+    fun `bredPair extrait les 2 UUID parents du message htq`() {
+        val htq = desc("htq")
+        val a = "b649d8dd-1251-4e88-9151-e42a93e63096"
+        val b = "b8303efb-4ab4-49af-9cb2-f942bdb824c3"
+        val msg = DynamicMessage.newBuilder(htq)
+            .setField(htq.findFieldByNumber(1), a)   // fnrr
+            .setField(htq.findFieldByNumber(3), b)   // fnru
+            .build()
+        val decoded = DecodedGameAny(
+            direction = Direction.CLIENT_TO_SERVER,
+            envelopeField = 1,
+            requestId = null,
+            typeUrl = "type.ankama.com/htq",
+            value = ByteArray(0),
+            knownName = "htq",
+        )
+        assertEquals(setOf(a, b), PaddockMapper.bredPair(decoded, msg))
+        // Autre message : pas de paire.
+        val other = DecodedGameAny(Direction.CLIENT_TO_SERVER, 1, null, "type.ankama.com/hse", ByteArray(0), null)
+        assertEquals(null, PaddockMapper.bredPair(other, msg))
     }
 
     @Test

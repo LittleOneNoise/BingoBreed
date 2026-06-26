@@ -36,3 +36,8 @@ kotlin {
         }
     }
 }
+
+// Propage le flag du downloader d'images hors-ligne (tools/MuldoImageDownloader) au JVM de test forké.
+tasks.withType<Test>().configureEach {
+    System.getProperty("downloadMuldoImages")?.let { systemProperty("downloadMuldoImages", it) }
+}

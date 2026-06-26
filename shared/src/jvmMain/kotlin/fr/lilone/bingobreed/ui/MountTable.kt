@@ -112,7 +112,7 @@ private fun MountRow(mount: Mount, zebra: Boolean) {
         // Nom (fallback « Anonyme » si null OU vide)
         val named = !mount.name.isNullOrBlank()
         Text(
-            if (named) mount.name!! else "Anonyme",
+            if (named) mount.name else "Anonyme",
             Modifier.width(110.dp),
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.SemiBold,
@@ -120,9 +120,9 @@ private fun MountRow(mount: Mount, zebra: Boolean) {
             overflow = TextOverflow.Ellipsis,
             color = if (named) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        // Robe : pastille + nom court
+        // Robe : vignette de monture (repli pastille) + nom court
         Row(Modifier.width(140.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(11.dp).background(robeColor(mount.appearanceId), CircleShape))
+            RobeMark(mount.appearanceId, 20.dp)
             Spacer(Modifier.width(6.dp))
             Text(
                 Robes.robeName(mount.appearanceId) ?: "#${mount.appearanceId}",
@@ -169,7 +169,7 @@ private fun ParentsCell(modifier: Modifier, parents: List<Int>) {
         } else {
             parents.take(2).forEach { id ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(9.dp).background(robeColor(id), CircleShape))
+                    RobeMark(id, 15.dp)
                     Spacer(Modifier.width(5.dp))
                     Text(
                         "${Robes.robeName(id) ?: "?"} ($id)",

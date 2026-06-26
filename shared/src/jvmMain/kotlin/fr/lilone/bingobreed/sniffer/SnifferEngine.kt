@@ -10,6 +10,7 @@ import fr.lilone.bingobreed.sniffer.model.ServerEndpoint
 import fr.lilone.bingobreed.sniffer.model.SnifferEvent
 import fr.lilone.bingobreed.sniffer.model.VersionCheck
 import fr.lilone.bingobreed.sniffer.model.breeding.Achievement
+import fr.lilone.bingobreed.sniffer.model.breeding.Fertility
 import fr.lilone.bingobreed.sniffer.model.breeding.Mount
 import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
 import fr.lilone.bingobreed.sniffer.parser.breeding.AchievementMapper
@@ -120,6 +121,15 @@ class SnifferEngine(
      * (re)entre dans l'enclos via un transfert `hif` (le `hif` ne porte que l'UUID).
      */
     val stableMounts: StateFlow<Map<String, Mount>> = _stableMounts.asStateFlow()
+
+    private val _consumedMounts = MutableStateFlow<Set<String>>(emptySet())
+    /**
+     * UUIDs des montures **fraîchement accouplées** (clic « Accoupler » `htq`), donc plus fécondes
+     * même si l'état encore en cache les montre à 20000. Le planificateur de repro les exclut pour ne
+     * pas rester fixé dessus. Purgé dès qu'un état **frais non-fécond** arrive pour la monture
+     * (jauges remises à zéro côté jeu) — cf. [clearConsumedFrom].
+     */
+    val consumedMounts: StateFlow<Set<String>> = _consumedMounts.asStateFlow()
 
     /** Démarre le sniffer (non bloquant). */
     fun start() {
@@ -237,7 +247,15 @@ class SnifferEngine(
 
                             PaddockMapper.selectedPaddockIndex(decoded, dynamic)?.let { lastPaddockIndex = it }
 
-                            PaddockMapper.stableMounts(decoded, dynamic)?.let { found -> _stableMounts.update { it + found } }
+                            PaddockMapper.stableMounts(decoded, dynamic)?.let { found ->
+                                _stableMounts.update { it + found }
+                                clearConsumedFrom(found)
+                            }
+
+                            // Accouplement (`htq`) : les 2 parents sont consommés → exclus du planner.
+                            PaddockMapper.bredPair(decoded, dynamic)?.let { ids ->
+                                _consumedMounts.update { it + ids }
+                            }
 
                             AchievementMapper.requestedCategory(decoded, dynamic)?.let { lastAchievementCategory = it }
                             AchievementMapper.detailedAchievements(decoded, dynamic, lastAchievementCategory)?.let { list ->
@@ -251,6 +269,7 @@ class SnifferEngine(
                             PaddockMapper.fromGameMessage(decoded, dynamic)?.let { paddock ->
                                 val withId = paddock.copy(id = lastPaddockIndex)
                                 _activePaddock.value = withId
+                                clearConsumedFrom(paddock.mounts)
                                 _events.emit(SnifferEvent.PaddockUpdated(selection.host, withId))
                             }
 
@@ -326,6 +345,18 @@ class SnifferEngine(
             _activePaddock.value = updated
             _events.emit(SnifferEvent.PaddockUpdated(host, updated))
         }
+    }
+
+    /**
+     * Purge de l'ensemble « consommées » les montures pour lesquelles un état **frais non-fécond**
+     * vient d'arriver (jauges remises à zéro après l'accouplement) : la marque optimiste posée par
+     * `htq` n'a plus lieu d'être, l'état réel prend le relais. Une monture qui resterait fécond dans
+     * les pushs (cache 20000) reste consommée — on fait confiance à `htq`.
+     */
+    private fun clearConsumedFrom(mounts: Map<String, Mount>) {
+        if (_consumedMounts.value.isEmpty()) return
+        val nowFresh = mounts.filterValues { it.fertility != Fertility.FECONDE }.keys
+        if (nowFresh.isNotEmpty()) _consumedMounts.update { it - nowFresh }
     }
 
     /** Loggue l'erreur et la propage sur le flux d'events (sans casser le SupervisorJob). */

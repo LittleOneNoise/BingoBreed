@@ -35,14 +35,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import fr.lilone.bingobreed.breeding.CascadeStep
+import fr.lilone.bingobreed.breeding.MountLocation
 import fr.lilone.bingobreed.breeding.NextAction
 import fr.lilone.bingobreed.breeding.OwnedMount
 import fr.lilone.bingobreed.breeding.OwnedStock
 import fr.lilone.bingobreed.breeding.ReproPlan
 import fr.lilone.bingobreed.breeding.ReproPlanner
 import fr.lilone.bingobreed.breeding.ReproTargets
+import fr.lilone.bingobreed.breeding.StepStatus
 import fr.lilone.bingobreed.sniffer.model.breeding.Achievement
+import fr.lilone.bingobreed.sniffer.model.breeding.Fertility
 import fr.lilone.bingobreed.sniffer.model.breeding.Mount
 import fr.lilone.bingobreed.sniffer.model.breeding.MountGauge
 import fr.lilone.bingobreed.sniffer.model.breeding.MuldoRobes
@@ -59,6 +61,7 @@ import fr.lilone.bingobreed.sniffer.model.breeding.Sex
 fun ReproScreen(
     stable: Map<String, Mount>,
     paddock: Paddock?,
+    consumed: Set<String>,
     achievements: Map<Int, Achievement>,
     now: Long,
     lastGameFrameAt: Long?,
@@ -73,8 +76,11 @@ fun ReproScreen(
     // à chaque tick d'horloge du chip réseau. Les StateFlows du sniffer poussant de nouvelles
     // références à chaque état d'enclos, ceci équivaut à un recalcul événementiel (≈ chaque push).
     val remaining = remember(achievements) { ReproTargets.remainingMuldoRobes(achievements) }
-    val stock = remember(stable, paddock) { OwnedStock.from(stable, paddock) }
-    val plan = remember(remaining, stock, optimakina) { ReproPlanner.plan(remaining, stock, optimakina) }
+    val stock = remember(stable, paddock, consumed) { OwnedStock.from(stable, paddock, consumed) }
+    val activeElements = paddock?.activeElements?.toSet() ?: emptySet()
+    val plan = remember(remaining, stock, optimakina, activeElements) {
+        ReproPlanner.plan(remaining, stock, optimakina, activeElements)
+    }
     val total = MuldoRobes.ALL.size
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -91,10 +97,83 @@ fun ReproScreen(
         }
 
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
-            NextActionCard(plan)
+            Checklist(plan)
             Spacer(Modifier.height(16.dp))
             RemainingRobes(remaining)
         }
+    }
+}
+
+/* ------------------------------------------------------------------ Checklist (3 statuts) */
+
+/**
+ * Checklist du coach : 3 groupes par statut — **Prêt maintenant** (croisements complétant une robe),
+ * **En cours** (montées dans l'enclos + montures juste accouplées), **À préparer** (à lancer,
+ * parallélisable). L'état live fait avancer chaque étape d'un groupe à l'autre, sans action manuelle.
+ */
+@Composable
+private fun Checklist(plan: ReproPlan) {
+    val ready = plan.stepsOf(StepStatus.READY)
+    val inProgress = plan.stepsOf(StepStatus.IN_PROGRESS)
+    val toPrepare = plan.stepsOf(StepStatus.TO_PREPARE)
+
+    if (ready.isNotEmpty()) {
+        StepSection("✅ Prêt maintenant", ready.size, BreedColors.feconde) {
+            ready.forEach { StepRow(it.action) }
+        }
+    }
+    if (inProgress.isNotEmpty() || plan.justBred.isNotEmpty()) {
+        if (ready.isNotEmpty()) Spacer(Modifier.height(16.dp))
+        StepSection("⏳ En cours", inProgress.size + plan.justBred.size, BreedColors.gold) {
+            inProgress.forEach { StepRow(it.action) }
+            plan.justBred.forEach { JustBredRow(it) }
+        }
+    }
+    if (toPrepare.isNotEmpty()) {
+        if (ready.isNotEmpty() || inProgress.isNotEmpty() || plan.justBred.isNotEmpty()) Spacer(Modifier.height(16.dp))
+        StepSection("🛠 À préparer", toPrepare.size, MaterialTheme.colorScheme.primary) {
+            toPrepare.forEach { StepRow(it.action) }
+        }
+    }
+}
+
+@Composable
+private fun StepSection(title: String, count: Int, accent: androidx.compose.ui.graphics.Color, body: @Composable () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.5.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(14.dp),
+    ) {
+        Text(
+            "$title ($count)",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = accent,
+        )
+        Spacer(Modifier.height(8.dp))
+        body()
+    }
+}
+
+/** Une ligne de checklist : rend l'action selon son type. */
+@Composable
+private fun StepRow(action: NextAction) {
+    Box(Modifier.padding(vertical = 4.dp)) { ActionBody(action) }
+}
+
+/** Monture juste accouplée : feedback « en cours, jauges en reset ». */
+@Composable
+private fun JustBredRow(m: OwnedMount) {
+    Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        MountRef(m)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "vient d'être accouplée — jauges en reset",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -166,35 +245,10 @@ private fun OptimakinaToggle(checked: Boolean, onChange: (Boolean) -> Unit) {
     }
 }
 
-/* ----------------------------------------------------------------- Prochaine action */
+/* ----------------------------------------------------------------- Rendu d'une action */
 
 @Composable
-private fun NextActionCard(plan: ReproPlan) {
-    val target = plan.target ?: return
-    Column(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.5.dp, BreedColors.feconde.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-            .padding(14.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("▶ Prochaine action", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = BreedColors.feconde)
-            Spacer(Modifier.weight(1f))
-            Text("Cible : ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            RobeChip(target, plan.targetGen)
-        }
-        Spacer(Modifier.height(10.dp))
-        ActionBody(plan.nextAction)
-        if (plan.cascade.isNotEmpty()) {
-            Spacer(Modifier.height(12.dp))
-            CascadeExpander(plan.cascade)
-        }
-    }
-}
-
-@Composable
-private fun ActionBody(action: NextAction?) {
+private fun ActionBody(action: NextAction) {
     when (action) {
         is NextAction.Cross -> Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -218,14 +272,28 @@ private fun ActionBody(action: NextAction?) {
         }
 
         is NextAction.RaiseGauges -> Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Monte les jauges de ", style = MaterialTheme.typography.bodyMedium)
-            MountRef(action.mount)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "— ${gaugeHint(action.mount)} (sérénité ${signedSerenity(action.mount.serenity)})",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            val m = action.mount
+            val raisable = m.gaugesRaisableNow()
+            if (raisable.isNotEmpty()) {
+                Text("Monte ", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    raisable.joinToString(" + ") { "${gaugeName(it.type)} ${shortK(it.value)}/${shortK(Fertility.GAUGE_MAX)}" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(" de ", style = MaterialTheme.typography.bodyMedium)
+                MountRef(m)
+            } else {
+                // Les jauges manquantes sont bloquées par la sérénité actuelle → l'ajuster d'abord.
+                Text("Ajuste la sérénité de ", style = MaterialTheme.typography.bodyMedium)
+                MountRef(m)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "pour monter ${m.gaugesMissing().joinToString(" + ") { gaugeName(it.type) }}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         is NextAction.Clone -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -253,12 +321,10 @@ private fun ActionBody(action: NextAction?) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-
-        null -> Text("Rien à planifier.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-/** Référence d'une monture du stock : sexe + nom + pastille de robe + niveau. */
+/** Référence d'une monture du stock : sexe + nom + vignette de robe + niveau + sérénité + localisation. */
 @Composable
 private fun MountRef(m: OwnedMount) {
     Row(
@@ -276,69 +342,56 @@ private fun MountRef(m: OwnedMount) {
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.width(6.dp))
-        Box(Modifier.size(9.dp).background(robeColorByName(m.robe), CircleShape))
+        RobeMark(m.robe, 18.dp)
         Spacer(Modifier.width(4.dp))
         Text(m.robe, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.width(6.dp))
         Text("niv ${m.level}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(6.dp))
+        // Sérénité (signée + smiley de bande) : aide à retrouver la monture (l'étable se trie par sérénité).
+        SerenitySmiley(m.serenityBand, diameter = 13.dp)
+        Spacer(Modifier.width(3.dp))
+        Text(
+            signedSerenity(m.serenity),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = serenityColor(m.serenityBand),
+            maxLines = 1,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "· ${locationLabel(m.location)}",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = locationColor(m.location),
+            maxLines = 1,
+        )
     }
+}
+
+/** Libellé court de localisation d'une monture (où aller la chercher). */
+private fun locationLabel(loc: MountLocation): String = when (loc) {
+    is MountLocation.Stable -> "Étable"
+    is MountLocation.Paddock -> loc.id?.let { "Enclos $it" } ?: "Enclos actif"
+}
+
+@Composable
+private fun locationColor(loc: MountLocation): androidx.compose.ui.graphics.Color = when (loc) {
+    is MountLocation.Stable -> MaterialTheme.colorScheme.onSurfaceVariant
+    is MountLocation.Paddock -> BreedColors.fence
 }
 
 /** Pastille de robe + nom (+ génération optionnelle). */
 @Composable
 private fun RobeChip(robe: String, gen: Int?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(11.dp).background(robeColorByName(robe), CircleShape))
+        RobeMark(robe, 20.dp)
         Spacer(Modifier.width(5.dp))
         Text(robe, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (gen != null) {
             Spacer(Modifier.width(4.dp))
             Text("G$gen", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    }
-}
-
-@Composable
-private fun CascadeExpander(cascade: List<CascadeStep>) {
-    var open by remember { mutableStateOf(false) }
-    Column {
-        Text(
-            "${if (open) "▼" else "▶"} Voir le chemin complet (${cascade.size} croisement${if (cascade.size > 1) "s" else ""})",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.clickable { open = !open },
-        )
-        if (open) {
-            Spacer(Modifier.height(8.dp))
-            cascade.forEach { step ->
-                Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("G${step.gen}", Modifier.width(28.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    RobeRef(step.parentA)
-                    Text(" × ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    RobeRef(step.parentB)
-                    Text("  →  ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    RobeRef(step.target, bold = true)
-                }
-            }
-        }
-    }
-}
-
-/** Robe inline (pastille + nom), gen 1 en accent or (à capturer). */
-@Composable
-private fun RobeRef(robe: String, bold: Boolean = false) {
-    val gen1 = robe in MuldoRobes.GEN1
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).background(robeColorByName(robe), CircleShape))
-        Spacer(Modifier.width(4.dp))
-        Text(
-            robe,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (gen1) BreedColors.gold else MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
@@ -361,7 +414,7 @@ private fun RemainingRobes(remaining: List<String>) {
                             .padding(horizontal = 7.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.size(9.dp).background(robeColorByName(robe), CircleShape))
+                        RobeMark(robe, 18.dp)
                         Spacer(Modifier.width(5.dp))
                         Text(robe, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                     }
@@ -405,13 +458,9 @@ private fun successColor(p: Double) = when {
     else -> BreedColors.serenityRed
 }
 
-private fun signedSerenity(s: Int): String = if (s > 0) "+$s" else s.toString()
-
 private fun sexLabel(s: Sex): String = if (s == Sex.MALE) "mâle" else "femelle"
 
-/** Jauges actuellement montables pour cette monture (selon sa bande de sérénité). */
-private fun gaugeHint(m: OwnedMount): String =
-    m.serenityBand.enables.joinToString(" + ") { gaugeName(it) }
+private fun signedSerenity(s: Int): String = if (s > 0) "+$s" else s.toString()
 
 private fun gaugeName(type: Int): String = when (type) {
     MountGauge.TYPE_LOVE -> "amour"
