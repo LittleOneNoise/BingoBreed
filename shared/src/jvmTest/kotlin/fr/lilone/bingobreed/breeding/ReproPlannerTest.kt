@@ -215,4 +215,58 @@ class ReproPlannerTest {
         val plan = ReproPlanner.plan(emptyList(), empty, optimakina = false)
         assertTrue(plan.fullSuccess)
     }
+
+    @Test
+    fun evenGenFertileIsRaisedAsParentOfTarget() {
+        // Régression : une fertile gen paire (« Turquoise et Pourpre », parent de Prune gen 7) doit être
+        // proposée à monter, même si elle n'est pas elle-même une cible directe.
+        val stock = stockOf(mount("Turquoise et Pourpre", Fertility.FERTILE, Sex.MALE, serenity = -3000))
+        val plan = ReproPlanner.plan(listOf("Prune"), stock, optimakina = false)
+        assertTrue(plan.steps.any { (it.action as? NextAction.RaiseGauges)?.mount?.robe == "Turquoise et Pourpre" })
+    }
+
+    @Test
+    fun evenGenFertileIsRaisedEvenWhenOddChildIsObtainable() {
+        // Cas réel du dump : on a déjà des Prune (fertile + féconde) → Prune est « obtenable » et donc
+        // élagué de la cascade. Sa fertile parente gen 6 « Turquoise et Pourpre » doit malgré tout être
+        // proposée à monter (régression du biais « jamais de gen paire »). La cible gen 8 « Prune et Doré »
+        // garde Prune dans l'ascendance.
+        val tp = mount("Turquoise et Pourpre", Fertility.FERTILE, Sex.FEMALE, serenity = -3000)
+        val stock = stockOf(
+            tp,
+            mount("Prune", Fertility.FERTILE, Sex.MALE),
+            mount("Prune", Fertility.FECONDE, Sex.MALE),
+            mount("Doré", Fertility.FECONDE, Sex.FEMALE),
+        )
+        val plan = ReproPlanner.plan(listOf("Prune et Doré"), stock, optimakina = false)
+        assertTrue(plan.steps.any { (it.action as? NextAction.RaiseGauges)?.mount?.uuid == tp.uuid })
+    }
+
+    @Test
+    fun extractableListsTerminalRobesButNotAncestors() {
+        // « Ébène et Émeraude » (gen 8 terminal, ancêtre de rien) → extractible. « Doré » (ancêtre de la
+        // cible « Doré et Pourpre ») → utile, jamais listé.
+        val stock = stockOf(
+            mount("Ébène et Émeraude", Fertility.FECONDE, Sex.MALE),
+            mount("Doré", Fertility.FECONDE, Sex.MALE),
+            mount("Pourpre", Fertility.FECONDE, Sex.FEMALE),
+        )
+        val plan = ReproPlanner.plan(listOf("Doré et Pourpre"), stock, optimakina = false)
+        assertTrue("Ébène et Émeraude" in plan.extractableByRobe)
+        assertTrue("Doré" !in plan.extractableByRobe)
+        assertTrue("Pourpre" !in plan.extractableByRobe)
+    }
+
+    @Test
+    fun terminalValidatedRobeFertileIsNotRaised() {
+        // Une fertile gen 8 « Ébène et Émeraude » qui n'est ancêtre d'aucune cible restante ne doit PAS
+        // être proposée (on ne monte que les fertiles utiles à l'ascendance des cibles).
+        val stock = stockOf(
+            mount("Ébène et Émeraude", Fertility.FERTILE, Sex.MALE),
+            mount("Doré", Fertility.FECONDE, Sex.FEMALE),
+            mount("Pourpre", Fertility.FECONDE, Sex.MALE),
+        )
+        val plan = ReproPlanner.plan(listOf("Doré et Pourpre"), stock, optimakina = false)
+        assertTrue(plan.steps.none { (it.action as? NextAction.RaiseGauges)?.mount?.robe == "Ébène et Émeraude" })
+    }
 }

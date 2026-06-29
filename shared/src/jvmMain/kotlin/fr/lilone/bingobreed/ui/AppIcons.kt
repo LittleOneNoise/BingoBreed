@@ -35,4 +35,10 @@ object AppIcons {
         MountGauge.TYPE_MATURITY -> Res.drawable.maturite
         else -> Res.drawable.endurance
     }
+
+    /** Caresseur : élément d'enclos qui **augmente** la sérénité. */
+    val serenityUp: DrawableResource = Res.drawable.caresseur
+
+    /** Baffeur : élément d'enclos qui **baisse** la sérénité. */
+    val serenityDown: DrawableResource = Res.drawable.baffeur
 }

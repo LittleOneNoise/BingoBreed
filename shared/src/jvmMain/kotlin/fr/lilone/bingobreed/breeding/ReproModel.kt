@@ -174,6 +174,11 @@ data class ReproPlan(
     val justBred: List<OwnedMount>,
     /** Toutes les robes restant à valider, triées par génération. */
     val remainingTargets: List<String>,
+    /**
+     * Montures **extractibles**, groupées par robe : leur robe n'est plus dans l'ascendance d'aucune
+     * cible restante (cf. [ReproPlanner.usefulRobes]) → elles ne peuvent plus contribuer à un succès.
+     */
+    val extractableByRobe: Map<String, List<OwnedMount>>,
     val fullSuccess: Boolean,
 ) {
     /** Raccourcis de regroupement pour l'UI. */

@@ -20,21 +20,30 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import fr.lilone.bingobreed.breeding.ReproDump
+import kotlinx.coroutines.delay
+import org.jetbrains.compose.resources.painterResource
 import fr.lilone.bingobreed.breeding.MountLocation
 import fr.lilone.bingobreed.breeding.NextAction
 import fr.lilone.bingobreed.breeding.OwnedMount
@@ -49,7 +58,9 @@ import fr.lilone.bingobreed.sniffer.model.breeding.Mount
 import fr.lilone.bingobreed.sniffer.model.breeding.MountGauge
 import fr.lilone.bingobreed.sniffer.model.breeding.MuldoRobes
 import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
+import fr.lilone.bingobreed.sniffer.model.breeding.SerenityBand
 import fr.lilone.bingobreed.sniffer.model.breeding.Sex
+import org.jetbrains.compose.resources.DrawableResource
 
 /**
  * Onglet Repro : planificateur « coach » vers le full succès Muldo. Calcule, à partir de
@@ -85,8 +96,11 @@ fun ReproScreen(
     }
     val total = MuldoRobes.ALL.size
 
+    val clipboard = LocalClipboardManager.current
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        ReproHeader(remaining.size, total, now, lastGameFrameAt)
+        ReproHeader(remaining.size, total, now, lastGameFrameAt) {
+            clipboard.setText(AnnotatedString(ReproDump.build(stable, paddocks, plan, remaining)))
+        }
         Spacer(Modifier.height(12.dp))
         SpeciesTabs()
         Spacer(Modifier.height(10.dp))
@@ -102,52 +116,182 @@ fun ReproScreen(
             Checklist(plan)
             Spacer(Modifier.height(16.dp))
             RemainingRobes(remaining)
+            Spacer(Modifier.height(16.dp))
+            ExtractableMounts(plan.extractableByRobe)
         }
     }
 }
 
-/* ------------------------------------------------------------------ Checklist (3 statuts) */
+/* ------------------------------------------------------------ Checklist (groupée par jauge) */
+
+/** Une montée de jauge à faire : la [mount], la [gauge] à monter (valeur/max), et son statut « en cours ». */
+private data class GaugeDirective(val mount: OwnedMount, val gauge: MountGauge, val inProgress: Boolean)
+
+/** Un réglage de sérénité à faire : la [mount] et les jauges qu'on **débloquera** une fois la sérénité ajustée. */
+private data class SerenityDirective(val mount: OwnedMount, val unlocks: List<MountGauge>, val inProgress: Boolean)
+
+/** Ordre d'affichage des groupes de jauges (amour, maturité, endurance). */
+private val GAUGE_DISPLAY_ORDER = listOf(MountGauge.TYPE_LOVE, MountGauge.TYPE_MATURITY, MountGauge.TYPE_ENDURANCE)
 
 /**
- * Checklist du coach : 3 groupes par statut — **Prêt maintenant** (croisements complétant une robe),
- * **En cours** (montées dans l'enclos + montures juste accouplées), **À préparer** (à lancer,
- * parallélisable). L'état live fait avancer chaque étape d'un groupe à l'autre, sans action manuelle.
+ * Checklist du coach, pensée pour le workflow in-game (**1 enclos par type de jauge**) : les croisements
+ * prêts en tête, puis les montées **regroupées par type de jauge** (un bloc Amour, un bloc Maturité…),
+ * un bloc « ajuster la sérénité », et enfin les autres préparations. Dans chaque bloc, les montures de
+ * **plus haute génération** sont en tête (on converge vers les vraies cibles). L'état live fait avancer
+ * chaque étape, sans action manuelle.
  */
 @Composable
 private fun Checklist(plan: ReproPlan) {
     val ready = plan.stepsOf(StepStatus.READY)
-    val inProgress = plan.stepsOf(StepStatus.IN_PROGRESS)
-    val toPrepare = plan.stepsOf(StepStatus.TO_PREPARE)
+
+    // Décompose chaque montée de jauge en directives **par type** : une monture qui doit monter amour
+    // ET endurance apparaît dans les deux blocs (c'est exactement le travail enclos par enclos). Si
+    // toutes ses jauges manquantes sont bloquées par la sérénité → bloc « ajuster la sérénité ».
+    val byGauge = LinkedHashMap<Int, MutableList<GaugeDirective>>()
+    val serenity = mutableListOf<SerenityDirective>()
+    plan.steps.forEach { step ->
+        val a = step.action
+        if (a is NextAction.RaiseGauges) {
+            val m = a.mount
+            val raisable = m.gaugesRaisableNow()
+            val inProgress = step.status == StepStatus.IN_PROGRESS
+            if (raisable.isNotEmpty()) {
+                raisable.forEach { g -> byGauge.getOrPut(g.type) { mutableListOf() } += GaugeDirective(m, g, inProgress) }
+            } else {
+                serenity += SerenityDirective(m, m.gaugesMissing(), inProgress)
+            }
+        }
+    }
+    // Autres préparations : clones, captures, croisements intermédiaires. On masque NeedOppositeSex :
+    // le standby « pas de sexe opposé » n'est pas une action et ne fait que polluer la checklist.
+    val otherPrep = plan.stepsOf(StepStatus.TO_PREPARE)
+        .filter { it.action !is NextAction.RaiseGauges && it.action !is NextAction.NeedOppositeSex }
+
+    var first = true
+    @Composable fun gap() { if (!first) Spacer(Modifier.height(16.dp)); first = false }
 
     if (ready.isNotEmpty()) {
+        gap()
         StepSection("✅ Prêt maintenant", ready.size, BreedColors.feconde) {
             ready.forEach { StepRow(it.action) }
         }
     }
-    if (inProgress.isNotEmpty() || plan.justBred.isNotEmpty()) {
-        if (ready.isNotEmpty()) Spacer(Modifier.height(16.dp))
-        StepSection("⏳ En cours", inProgress.size + plan.justBred.size, BreedColors.gold) {
-            inProgress.forEach { StepRow(it.action) }
+    GAUGE_DISPLAY_ORDER.forEach { type ->
+        val directives = byGauge[type]?.sortedWith(byGenDescThenLevel { it.mount }) ?: return@forEach
+        gap()
+        GaugeSection(type, directives)
+    }
+    // Sérénité scindée en 2 blocs : monter (bandes RED/BLUE, débloque maturité/amour) vs baisser
+    // (bandes PURPLE/GREEN, débloque endurance/maturité) — un enclos « caresseur » et un « baffeur ».
+    val (toRaise, toLower) = serenity.partition { needsSerenityRaise(it.mount) }
+    if (toRaise.isNotEmpty()) {
+        gap()
+        SerenitySection("Monter la sérénité", AppIcons.serenityUp, BreedColors.serenityPurple, toRaise.sortedWith(byGenDescThenLevel { it.mount }))
+    }
+    if (toLower.isNotEmpty()) {
+        gap()
+        SerenitySection("Baisser la sérénité", AppIcons.serenityDown, BreedColors.serenityRed, toLower.sortedWith(byGenDescThenLevel { it.mount }))
+    }
+    if (plan.justBred.isNotEmpty()) {
+        gap()
+        StepSection("⏳ Vient d'être accouplée", plan.justBred.size, BreedColors.gold) {
             plan.justBred.forEach { JustBredRow(it) }
         }
     }
-    if (toPrepare.isNotEmpty()) {
-        if (ready.isNotEmpty() || inProgress.isNotEmpty() || plan.justBred.isNotEmpty()) Spacer(Modifier.height(16.dp))
-        StepSection("🛠 À préparer", toPrepare.size, MaterialTheme.colorScheme.primary) {
-            toPrepare.forEach { StepRow(it.action) }
+    if (otherPrep.isNotEmpty()) {
+        gap()
+        StepSection("🛠 À préparer", otherPrep.size, MaterialTheme.colorScheme.primary) {
+            otherPrep.forEach { StepRow(it.action) }
         }
     }
 }
 
+/** Comparateur : génération **décroissante** (plus haute en tête) puis niveau décroissant. */
+private fun <T> byGenDescThenLevel(mountOf: (T) -> OwnedMount): Comparator<T> =
+    compareByDescending<T> { MuldoRobes.byName(mountOf(it).robe)?.gen ?: 0 }
+        .thenByDescending { mountOf(it).level }
+
+/** Bloc « Monter <jauge> » : icône + montures concernées (vignettes qui s'enroulent), plus haute gen en tête. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StepSection(title: String, count: Int, accent: androidx.compose.ui.graphics.Color, body: @Composable () -> Unit) {
+private fun GaugeSection(type: Int, directives: List<GaugeDirective>) {
+    val accent = gaugeColor(type)
+    SectionShell(accent) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(AppIcons.gauge(type)), null, Modifier.size(18.dp), tint = accent)
+            Spacer(Modifier.width(8.dp))
+            Text("Monter ${gaugeName(type)} (${directives.size})", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = accent)
+        }
+        Spacer(Modifier.height(8.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            directives.forEach { d ->
+                Row(Modifier.alpha(if (d.inProgress) 0.55f else 1f), verticalAlignment = Alignment.CenterVertically) {
+                    MountRef(d.mount)
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        "${shortK(d.gauge.value)}/${shortK(Fertility.GAUGE_MAX)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = accent,
+                    )
+                    if (d.inProgress) { Spacer(Modifier.width(4.dp)); Text("⏳", style = MaterialTheme.typography.labelSmall) }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Une monture en standby sérénité doit-elle la **monter** (bandes RED/BLUE → débloque maturité/amour)
+ * ou la **baisser** (bandes PURPLE/GREEN → débloque endurance/maturité) ? La bande courante suffit à
+ * trancher : les jauges qu'il lui reste à monter sont toujours du même côté.
+ */
+private fun needsSerenityRaise(m: OwnedMount): Boolean =
+    m.serenityBand == SerenityBand.RED || m.serenityBand == SerenityBand.BLUE
+
+/** Bloc « Monter / Baisser la sérénité » : icône + montures, avec les jauges qu'on débloquera. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SerenitySection(title: String, icon: DrawableResource, accent: Color, directives: List<SerenityDirective>) {
+    SectionShell(accent) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(icon), null, Modifier.size(18.dp), tint = accent)
+            Spacer(Modifier.width(8.dp))
+            Text("$title (${directives.size})", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = accent)
+        }
+        Spacer(Modifier.height(8.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            directives.forEach { d ->
+                Row(Modifier.alpha(if (d.inProgress) 0.55f else 1f), verticalAlignment = Alignment.CenterVertically) {
+                    MountRef(d.mount)
+                    Spacer(Modifier.width(5.dp))
+                    Text("→", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    d.unlocks.forEach { g ->
+                        Spacer(Modifier.width(3.dp))
+                        Icon(painterResource(AppIcons.gauge(g.type)), gaugeName(g.type), Modifier.size(14.dp), tint = gaugeColor(g.type))
+                    }
+                    if (d.inProgress) { Spacer(Modifier.width(4.dp)); Text("⏳", style = MaterialTheme.typography.labelSmall) }
+                }
+            }
+        }
+    }
+}
+
+/** Coque commune d'un bloc de la checklist (surface arrondie + liseré d'accent). */
+@Composable
+private fun SectionShell(accent: Color, body: @Composable () -> Unit) {
     Column(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(1.5.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
             .padding(14.dp),
-    ) {
+    ) { body() }
+}
+
+@Composable
+private fun StepSection(title: String, count: Int, accent: Color, body: @Composable () -> Unit) {
+    SectionShell(accent) {
         Text(
             "$title ($count)",
             style = MaterialTheme.typography.labelLarge,
@@ -180,15 +324,41 @@ private fun JustBredRow(m: OwnedMount) {
 }
 
 @Composable
-private fun ReproHeader(remaining: Int, total: Int, now: Long, lastGameFrameAt: Long?) {
+private fun ReproHeader(remaining: Int, total: Int, now: Long, lastGameFrameAt: Long?, onCopyState: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Reproduction", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(10.dp))
+        CopyStateButton(onCopyState)
         Spacer(Modifier.weight(1f))
         NetworkChip(now, lastGameFrameAt)
         Spacer(Modifier.width(12.dp))
         Text(
             "$remaining robes restantes / $total",
             style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Petit bouton discret « copier l'état » (étable + enclos + directives) pour le debug. */
+@Composable
+private fun CopyStateButton(onCopy: () -> Unit) {
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) { delay(1500); copied = false }
+    }
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable { onCopy(); copied = true }
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(if (copied) "✓" else "📋", style = MaterialTheme.typography.labelSmall)
+        Spacer(Modifier.width(4.dp))
+        Text(
+            if (copied) "Copié" else "Copier l'état",
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -420,6 +590,60 @@ private fun RemainingRobes(remaining: List<String>) {
                         Spacer(Modifier.width(5.dp))
                         Text(robe, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                     }
+                }
+            }
+        }
+    }
+}
+
+/* ------------------------------------------------------------ Montures extractibles */
+
+/**
+ * Section discrète, repliée par défaut : les montures dont la robe n'est plus dans l'ascendance
+ * d'aucune cible restante (cf. [ReproPlanner.usefulRobes]) — donc bonnes pour l'extracteur. Groupées
+ * par robe (compte), génération **décroissante** d'abord (les gen terminales hautes en tête).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ExtractableMounts(byRobe: Map<String, List<OwnedMount>>) {
+    if (byRobe.isEmpty()) return
+    var expanded by remember { mutableStateOf(false) }
+    val total = byRobe.values.sumOf { it.size }
+    val rows = byRobe.entries
+        .sortedWith(compareByDescending<Map.Entry<String, List<OwnedMount>>> { MuldoRobes.byName(it.key)?.gen ?: 0 }.thenByDescending { it.value.size })
+
+    Row(
+        Modifier.clip(RoundedCornerShape(6.dp)).clickable { expanded = !expanded }.padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(if (expanded) "▾" else "▸", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(6.dp))
+        Text("♻ Montures extractibles ($total)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    }
+    if (expanded) {
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Robe hors recette de toute cible restante — ne peut plus servir (selon les recettes connues).",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            rows.forEach { (robe, mounts) ->
+                Row(
+                    Modifier.clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RobeMark(robe, 18.dp)
+                    Spacer(Modifier.width(5.dp))
+                    Text(robe, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                    MuldoRobes.byName(robe)?.gen?.let {
+                        Spacer(Modifier.width(4.dp))
+                        Text("G$it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.width(5.dp))
+                    Text("×${mounts.size}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

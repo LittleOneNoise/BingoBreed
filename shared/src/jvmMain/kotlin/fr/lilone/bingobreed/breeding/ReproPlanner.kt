@@ -46,12 +46,12 @@ object ReproPlanner {
         captureHorizon: Int = DEFAULT_CAPTURE_HORIZON,
     ): ReproPlan {
         if (remaining.isEmpty()) {
-            return ReproPlan(emptyList(), emptyList(), emptyList(), fullSuccess = true)
+            return ReproPlan(emptyList(), emptyList(), emptyList(), emptyMap(), fullSuccess = true)
         }
         val remainingSet = remaining.toHashSet()
 
-        // Robes nécessaires : pour raises/clones/croisements (toutes cibles) ; sous-ensemble « proche »
-        // (cascade ≤ horizon) pour les captures uniquement.
+        // Robes **à produire** (croisement/clone/capture) : cascade élaguée aux robes déjà obtenables ;
+        // sous-ensemble « proche » (cascade ≤ horizon) pour les captures uniquement.
         val needed = HashSet<String>()
         val captureNeeded = HashSet<String>()
         for (target in remaining) {
@@ -62,15 +62,29 @@ object ReproPlanner {
             cascade.forEach { mark(it.target); mark(it.parentA); mark(it.parentB) }
         }
 
+        // Robes dont on **monte les fertiles** : ascendance **complète** des cibles, **sans** élagage
+        // « obtenable ». Sinon une fertile de gen paire (ex. « Turquoise et Pourpre », 50 % de Prune)
+        // restait invisible dès que son enfant gen impaire (Prune) était déjà obtenable et donc élagué :
+        // l'enfant était monté, jamais ses parents. Monter une fertile déjà possédée est toujours du
+        // travail utile et borné par le stock ; les robes hors ascendance (gen terminales déjà validées)
+        // restent exclues. [needed] ⊆ [raiseAncestry].
+        val raiseAncestry = usefulRobes(remaining)
+        // Montures **extractibles** : robe hors ascendance des cibles → ne peut plus contribuer à aucun
+        // succès restant (cf. [usefulRobes]). Groupées par robe pour l'UI.
+        val extractableByRobe = stock.byRobe.filterKeys { it !in raiseAncestry }
+
         val steps = LinkedHashMap<String, ReproStep>() // clé de dédup → étape (1re occurrence conservée)
         fun put(key: String, action: NextAction, status: StepStatus) = steps.putIfAbsent(key, ReproStep(action, status))
 
-        needed.sortedWith(compareBy({ MuldoRobes.byName(it)?.gen ?: Int.MAX_VALUE }, { it })).forEach { robe ->
+        raiseAncestry.sortedWith(compareBy({ MuldoRobes.byName(it)?.gen ?: Int.MAX_VALUE }, { it })).forEach { robe ->
             // Monter chaque fertile possédée de cette robe (en cours si déjà dans l'enclos sur la bonne jauge).
             stock.fertiles(robe).forEach { f ->
                 put("raise:${f.uuid}", NextAction.RaiseGauges(f),
                     if (isRaising(f, activeElementsByPaddock)) StepStatus.IN_PROGRESS else StepStatus.TO_PREPARE)
             }
+            // Production (clone/croisement/capture) : réservée aux robes **à produire** ([needed] élagué),
+            // pour ne pas sur-produire une robe déjà obtenable autrement.
+            if (robe !in needed) return@forEach
             // Cloner ≥2 stériles identiques.
             val ster = stock.steriles(robe).sortedByDescending { it.level }
             if (ster.size >= 2) put("clone:$robe", NextAction.Clone(robe, ster[0], ster[1]), StepStatus.TO_PREPARE)
@@ -104,8 +118,25 @@ object ReproPlanner {
             steps = sorted,
             justBred = stock.justBred().distinctBy { it.uuid },
             remainingTargets = remaining,
+            extractableByRobe = extractableByRobe,
             fullSuccess = false,
         )
+    }
+
+    /**
+     * Robes **utiles** : ascendance-recette **complète** des cibles restantes (sans élagage). Une robe
+     * hors de cet ensemble ne peut plus être parente (directe ou transitive) d'aucun succès restant : ses
+     * montures sont donc extractibles. Démontrable car une robe ne se produit **que** via sa recette
+     * ([MuldoRobes.recipe]), dont les 2 parents sont par construction dans cette ascendance.
+     */
+    fun usefulRobes(remaining: List<String>): Set<String> {
+        val acc = HashSet<String>()
+        fun add(robe: String) {
+            if (!acc.add(robe)) return
+            MuldoRobes.byName(robe)?.recipe?.let { (a, b) -> add(a); add(b) }
+        }
+        remaining.forEach(::add)
+        return acc
     }
 
     /** Priorité d'affichage intra-statut : croisements d'abord, captures en dernier (recours). */
