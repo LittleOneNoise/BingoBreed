@@ -33,14 +33,16 @@ object ReproPlanner {
      * sont prêts. Les **captures** ne sont émises que pour les cibles **proches** ([captureHorizon]) pour
      * ne pas plonger trop loin dans l'arbre. Tout est dédupliqué et classé par [StepStatus].
      *
-     * [activeElements] = éléments de jauge actifs de l'enclos actif (ordinaux hhc), pour distinguer une
-     * montée **en cours** d'une montée **à lancer**.
+     * [activeElementsByPaddock] = éléments de jauge actifs (ordinaux hhc) **par index d'enclos** (clé =
+     * `Paddock.id`, nullable). Une montée est jugée « en cours » contre les éléments de **l'enclos où se
+     * trouve la monture**, pas contre l'onglet d'enclos actuellement ouvert — ainsi changer d'onglet
+     * in-game ne déplace pas les étapes.
      */
     fun plan(
         remaining: List<String>,
         stock: OwnedStock,
         optimakina: Boolean,
-        activeElements: Set<Int> = emptySet(),
+        activeElementsByPaddock: Map<Int?, Set<Int>> = emptyMap(),
         captureHorizon: Int = DEFAULT_CAPTURE_HORIZON,
     ): ReproPlan {
         if (remaining.isEmpty()) {
@@ -67,7 +69,7 @@ object ReproPlanner {
             // Monter chaque fertile possédée de cette robe (en cours si déjà dans l'enclos sur la bonne jauge).
             stock.fertiles(robe).forEach { f ->
                 put("raise:${f.uuid}", NextAction.RaiseGauges(f),
-                    if (isRaising(f, activeElements)) StepStatus.IN_PROGRESS else StepStatus.TO_PREPARE)
+                    if (isRaising(f, activeElementsByPaddock)) StepStatus.IN_PROGRESS else StepStatus.TO_PREPARE)
             }
             // Cloner ≥2 stériles identiques.
             val ster = stock.steriles(robe).sortedByDescending { it.level }
@@ -127,12 +129,16 @@ object ReproPlanner {
     }
 
     /**
-     * Une montée est **en cours** si la monture est **dans l'enclos actif** ET qu'un élément **utile**
-     * est actif : soit un élément monte une jauge actuellement débloquée par sa bande de sérénité, soit
-     * un élément de sérénité est actif (réglage en cours, ex. « monter la sérénité avant l'amour »).
+     * Une montée est **en cours** si la monture est **dans un enclos** ET qu'un élément **utile** est
+     * actif **dans ce même enclos** : soit un élément monte une jauge actuellement débloquée par sa
+     * bande de sérénité, soit un élément de sérénité est actif (réglage en cours, ex. « monter la
+     * sérénité avant l'amour »). On regarde les éléments de l'enclos de la monture (via [MountLocation]),
+     * pas ceux de l'onglet ouvert, pour rester stable au changement d'onglet.
      */
-    private fun isRaising(mount: OwnedMount, activeElements: Set<Int>): Boolean {
-        if (mount.location !is MountLocation.Paddock) return false
+    private fun isRaising(mount: OwnedMount, activeElementsByPaddock: Map<Int?, Set<Int>>): Boolean {
+        val location = mount.location
+        if (location !is MountLocation.Paddock) return false
+        val activeElements = activeElementsByPaddock[location.id] ?: return false
         val risingTypes = activeElements.mapNotNull(::fuelElementToGauge).toSet()
         val gaugeWork = mount.serenityBand.enables.any { it in risingTypes }
         val serenityWork = activeElements.any { it in SERENITY_ELEMENTS }

@@ -76,15 +76,17 @@ class OwnedStock(val byRobe: Map<String, List<OwnedMount>>) {
 
     companion object {
         /**
-         * Construit le stock depuis l'étable + l'enclos actif, dédupliqué par uuid, robes muldo
-         * connues. [consumed] = montures fraîchement accouplées (`htq`), exclues du calcul tant
-         * qu'un état frais ne les a pas rétablies (cf. SnifferEngine.consumedMounts).
+         * Construit le stock depuis l'étable + **tous les enclos connus**, dédupliqué par uuid, robes
+         * muldo connues. Prendre tous les enclos (pas seulement l'actif) garde le planificateur stable
+         * quand le joueur change d'onglet d'enclos in-game. [consumed] = montures fraîchement accouplées
+         * (`htq`), exclues du calcul tant qu'un état frais ne les a pas rétablies (cf.
+         * SnifferEngine.consumedMounts).
          */
-        fun from(stable: Map<String, Mount>, paddock: Paddock?, consumed: Set<String> = emptySet()): OwnedStock {
+        fun from(stable: Map<String, Mount>, paddocks: Iterable<Paddock>, consumed: Set<String> = emptySet()): OwnedStock {
             val merged = LinkedHashMap<String, Pair<Mount, MountLocation>>()
             stable.forEach { (uuid, m) -> merged[uuid] = m to MountLocation.Stable }
-            // L'enclos (plus live) prime, et fixe la localisation « enclos actif ».
-            paddock?.mounts?.forEach { (uuid, m) -> merged[uuid] = m to MountLocation.Paddock(paddock.id) }
+            // Les enclos (plus live) priment, et fixent la localisation « enclos N ».
+            paddocks.forEach { p -> p.mounts.forEach { (uuid, m) -> merged[uuid] = m to MountLocation.Paddock(p.id) } }
             val byRobe = merged.values
                 .mapNotNull { (m, loc) -> MuldoRobes.BY_ID[m.appearanceId]?.let { robe -> toOwned(m, robe.name, loc, m.uuid in consumed) } }
                 .groupBy { it.robe }

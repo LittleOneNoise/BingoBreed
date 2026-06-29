@@ -60,7 +60,7 @@ import fr.lilone.bingobreed.sniffer.model.breeding.Sex
 @Composable
 fun ReproScreen(
     stable: Map<String, Mount>,
-    paddock: Paddock?,
+    paddocks: Map<Int?, Paddock>,
     consumed: Set<String>,
     achievements: Map<Int, Achievement>,
     now: Long,
@@ -76,10 +76,12 @@ fun ReproScreen(
     // à chaque tick d'horloge du chip réseau. Les StateFlows du sniffer poussant de nouvelles
     // références à chaque état d'enclos, ceci équivaut à un recalcul événementiel (≈ chaque push).
     val remaining = remember(achievements) { ReproTargets.remainingMuldoRobes(achievements) }
-    val stock = remember(stable, paddock, consumed) { OwnedStock.from(stable, paddock, consumed) }
-    val activeElements = paddock?.activeElements?.toSet() ?: emptySet()
-    val plan = remember(remaining, stock, optimakina, activeElements) {
-        ReproPlanner.plan(remaining, stock, optimakina, activeElements)
+    val stock = remember(stable, paddocks, consumed) { OwnedStock.from(stable, paddocks.values, consumed) }
+    // Éléments actifs par enclos (clé = Paddock.id) : le « en cours » se juge enclos par enclos, donc
+    // changer d'onglet d'enclos in-game ne réordonne plus les étapes.
+    val activeByPaddock = remember(paddocks) { paddocks.values.associate { it.id to it.activeElements.toSet() } }
+    val plan = remember(remaining, stock, optimakina, activeByPaddock) {
+        ReproPlanner.plan(remaining, stock, optimakina, activeByPaddock)
     }
     val total = MuldoRobes.ALL.size
 

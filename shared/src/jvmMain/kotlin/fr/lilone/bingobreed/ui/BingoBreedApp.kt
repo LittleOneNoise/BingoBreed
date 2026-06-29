@@ -69,6 +69,7 @@ private enum class Tab(val label: String, val icon: DrawableResource?, val glyph
 @Composable
 fun BingoBreedApp(engine: SnifferEngine) {
     val paddock by engine.activePaddock.collectAsState()
+    val paddocks by engine.paddocks.collectAsState()
     val stable by engine.stableMounts.collectAsState()
     val consumed by engine.consumedMounts.collectAsState()
     val achievements by engine.achievements.collectAsState()
@@ -96,7 +97,7 @@ fun BingoBreedApp(engine: SnifferEngine) {
                             Tab.ENCLOS -> EnclosScreen(paddock, now, lastGameFrameAt)
                             Tab.ETABLE -> EtableScreen(stable, now, lastGameFrameAt)
                             Tab.SUCCES -> SuccesScreen(achievements, now, lastGameFrameAt)
-                            Tab.REPRO -> ReproScreen(stable, paddock, consumed, achievements, now, lastGameFrameAt)
+                            Tab.REPRO -> ReproScreen(stable, paddocks, consumed, achievements, now, lastGameFrameAt)
                             Tab.DEBUG -> DebugScreen(engine)
                         }
                         if (showSignalOverlay) SignalOverlay(signalAge)

@@ -89,6 +89,16 @@ class SnifferEngine(
     /** Dernier état d'enclos décodé, pour binding direct par l'UI (null si rien encore vu). */
     val activePaddock: StateFlow<Paddock?> = _activePaddock.asStateFlow()
 
+    private val _paddocks = MutableStateFlow<Map<Int?, Paddock>>(emptyMap())
+    /**
+     * **Tous** les enclos vus au moins une fois, indexés par leur index `hkv` (`id`). Le jeu ne pousse
+     * l'état (`him`) que de l'enclos **ouvert** ; cette carte mémorise les autres pour que le
+     * planificateur de repro reste **stable** quand on change d'onglet d'enclos in-game (sinon les
+     * montures de l'enclos quitté perdraient leur localisation et leurs montées « en cours »). Mis à
+     * jour en miroir de [activePaddock] à chaque (re)lecture/mutation d'enclos.
+     */
+    val paddocks: StateFlow<Map<Int?, Paddock>> = _paddocks.asStateFlow()
+
     private val _lastGameFrameAt = MutableStateFlow<Long?>(null)
     /**
      * Horodatage (epoch ms) du dernier frame de jeu **quelconque** (flux bavard). Santé
@@ -268,7 +278,7 @@ class SnifferEngine(
 
                             PaddockMapper.fromGameMessage(decoded, dynamic)?.let { paddock ->
                                 val withId = paddock.copy(id = lastPaddockIndex)
-                                _activePaddock.value = withId
+                                setActivePaddock(withId)
                                 clearConsumedFrom(paddock.mounts)
                                 _events.emit(SnifferEvent.PaddockUpdated(selection.host, withId))
                             }
@@ -323,7 +333,7 @@ class SnifferEngine(
         if (toStable.isNotEmpty()) _stableMounts.update { it + toStable }
         if (changed) {
             val updated = current.copy(mounts = mounts)
-            _activePaddock.value = updated
+            setActivePaddock(updated)
             _events.emit(SnifferEvent.PaddockUpdated(host, updated))
         }
     }
@@ -342,9 +352,19 @@ class SnifferEngine(
         }
         if (changed) {
             val updated = current.copy(activeElements = elements)
-            _activePaddock.value = updated
+            setActivePaddock(updated)
             _events.emit(SnifferEvent.PaddockUpdated(host, updated))
         }
+    }
+
+    /**
+     * Publie [paddock] comme enclos **actif** (binding direct UI) **et** le mémorise dans la carte
+     * [paddocks] sous son index. Ainsi, changer d'onglet d'enclos in-game met à jour l'actif sans
+     * faire disparaître les autres enclos du planificateur de repro.
+     */
+    private fun setActivePaddock(paddock: Paddock) {
+        _activePaddock.value = paddock
+        _paddocks.update { it + (paddock.id to paddock) }
     }
 
     /**

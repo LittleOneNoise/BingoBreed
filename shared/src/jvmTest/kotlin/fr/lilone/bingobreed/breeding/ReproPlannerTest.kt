@@ -109,8 +109,28 @@ class ReproPlannerTest {
             ),
             mount("Doré et Orchidée", Fertility.FECONDE, Sex.MALE),
         )
-        // Élément actif 4 = dragofesse (amour).
-        val plan = ReproPlanner.plan(listOf("Roux"), stock, optimakina = false, activeElements = setOf(4))
+        // Élément actif 4 = dragofesse (amour) dans l'enclos 1.
+        val plan = ReproPlanner.plan(listOf("Roux"), stock, optimakina = false, activeElementsByPaddock = mapOf<Int?, Set<Int>>(1 to setOf(4)))
+        val raise = plan.steps.first { it.action is NextAction.RaiseGauges }
+        assertEquals(StepStatus.IN_PROGRESS, raise.status)
+    }
+
+    @Test
+    fun raisingIsJudgedPerEnclosNotByOpenTab() {
+        // Régression : une fertile monte dans l'enclos 2 (dragofesse active). Quand on ouvre l'onglet
+        // de l'enclos 1 (autres éléments actifs), sa montée doit rester « en cours » — on juge enclos
+        // par enclos, pas selon l'onglet ouvert.
+        val stock = stockOf(
+            mount(
+                "Doré et Pourpre", Fertility.FERTILE, Sex.FEMALE,
+                serenity = 3000, // bande GREEN → amour montable
+                location = MountLocation.Paddock(2),
+            ),
+            mount("Doré et Orchidée", Fertility.FECONDE, Sex.MALE),
+        )
+        // Enclos 1 ouvert (élément sérénité actif), enclos 2 a la dragofesse (amour) active.
+        val active = mapOf<Int?, Set<Int>>(1 to setOf(1), 2 to setOf(4))
+        val plan = ReproPlanner.plan(listOf("Roux"), stock, optimakina = false, activeElementsByPaddock = active)
         val raise = plan.steps.first { it.action is NextAction.RaiseGauges }
         assertEquals(StepStatus.IN_PROGRESS, raise.status)
     }
