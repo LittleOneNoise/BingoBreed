@@ -8,37 +8,37 @@ import fr.lilone.bingobreed.sniffer.model.breeding.AchievementObjective
 
 /**
  * Transforme les messages de succès en [Achievement].
- *  - `mea` (C→S) : requête de détail d'une catégorie — porte l'**id de catégorie**.
- *  - `mdu` (S→C) : liste détaillée des succès de la **dernière catégorie demandée**.
- *  - `mdz` (S→C) : liste générale (succès presque terminés / en cours), non catégorisée.
+ *  - `mco` (C→S) : requête de détail d'une catégorie — porte l'**id de catégorie**.
+ *  - `mcj` (S→C) : liste détaillée des succès de la **dernière catégorie demandée**.
+ *  - `mcr` (S→C) : liste générale (succès presque terminés / en cours), non catégorisée.
  *
  * ⚠️ **Couche fragile au patch** (cf. [PaddockMapper]) : les numéros de champ ([F]) viennent
  * d'`output.proto` et sont le seul point à resynchroniser après une MAJ Dofus.
- * Resynchronisé au patch 2026-06.
+ * Resynchronisé au patch 2026-07 (client 3.6.6.6).
  */
 object AchievementMapper {
 
-    const val CODE_CATEGORY_REQ = "mea" // C→S : requête détail catégorie (porte l'id)
-    const val CODE_DETAILED = "mdu"     // S→C : liste détaillée d'une catégorie
-    const val CODE_LIST = "mdz"         // S→C : liste générale (en cours)
+    const val CODE_CATEGORY_REQ = "mco" // C→S : requête détail catégorie (porte l'id, mco.gekb)
+    const val CODE_DETAILED = "mcj"     // S→C : liste détaillée d'une catégorie
+    const val CODE_LIST = "mcr"         // S→C : liste générale (en cours)
 
     /**
      * Numéros de champ wire — UNIQUE point de resynchronisation. Noms **sémantiques** stables ; ne
-     * mettre à jour que la **valeur** + le commentaire d'identité (`message.champ`). Patch 2026-06.
+     * mettre à jour que la **valeur** + le commentaire d'identité (`message.champ`). Patch 2026-07.
      */
     private object F {
-        const val REQUEST_CATEGORY = 1   // mea.gexi (id de catégorie demandée)
-        // Liste détaillée : `mdu` a deux listes `mds` — les deux sont lues
-        const val DETAILED_LIST_A = 1    // mdu.gewc  rep mds
-        const val DETAILED_LIST_B = 2    // mdu.gewd  rep mds
-        const val OVERVIEW_LIST = 1      // mdz.gexe  rep mds (vue d'ensemble)
-        // Succès (mds)
-        const val ACH_ID = 1             // mds.gevr
-        const val ACH_OBJECTIVES = 2     // mds.gevs  rep mdq
-        // Objectif (mdq)
-        const val OBJ_TARGET = 2         // mdq.gevk (cible)
-        const val OBJ_ID = 3             // mdq.gevl
-        const val OBJ_CURRENT = 4        // mdq.gevm (optional ; absent = terminé)
+        const val REQUEST_CATEGORY = 1   // mco.gekb (id de catégorie demandée)
+        // Liste détaillée : `mcj` a deux listes `mda` — les deux sont lues
+        const val DETAILED_LIST_A = 2    // mcj.gejj  rep mda
+        const val DETAILED_LIST_B = 3    // mcj.gejk  rep mda
+        const val OVERVIEW_LIST = 2      // mcr.gekg  rep mda (vue d'ensemble)
+        // Succès (mda)
+        const val ACH_ID = 2             // mda.gelg
+        const val ACH_OBJECTIVES = 1     // mda.gelf  rep mcy
+        // Objectif (mcy)
+        const val OBJ_TARGET = 1         // mcy.gekx (cible)
+        const val OBJ_ID = 4             // mcy.gelb
+        const val OBJ_CURRENT = 3        // mcy.gekz (optional ; absent = terminé)
     }
 
     /** Id de catégorie d'une requête de détail, ou null si autre message. */

@@ -16,6 +16,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Properties
 
 /**
  * Étape 2 — récupération de la configuration publique de Dofus.
@@ -99,11 +100,25 @@ class DofusConfigProvider(
         const val DEFAULT_CONFIG_URL = "https://dofus2.cdn.ankama.com/config/dofus3.json"
 
         /**
-         * Version du client Dofus sur laquelle BingoBreed a été construit à sa release :
-         * référence pour [checkVersion]. À mettre à jour à chaque réalignement des
-         * descripteurs / du parsing protobuf sur une nouvelle version du client.
+         * Nom de la ressource `.properties` (classpath) portant la version de référence, pour
+         * ne pas figer cette valeur dans le code.
          */
-        const val DOFUS_CLIENT_VERSION_REFERENCE = "3.6.4.3"
+        private const val CLIENT_PROPERTIES = "/dofus-client.properties"
+
+        /**
+         * Version du client Dofus sur laquelle BingoBreed a été construit à sa release :
+         * référence pour [checkVersion]. Lue depuis [CLIENT_PROPERTIES] (champ `clientVersion`).
+         * À mettre à jour à chaque réalignement des descripteurs / du parsing protobuf sur une
+         * nouvelle version du client — côté fichier, plus dans le code.
+         */
+        val DOFUS_CLIENT_VERSION_REFERENCE: String by lazy {
+            DofusConfigProvider::class.java.getResourceAsStream(CLIENT_PROPERTIES).use { stream ->
+                checkNotNull(stream) { "Ressource $CLIENT_PROPERTIES introuvable sur le classpath" }
+                val version = Properties().apply { load(stream) }.getProperty("clientVersion")?.trim()
+                require(!version.isNullOrEmpty()) { "Champ `clientVersion` absent ou vide dans $CLIENT_PROPERTIES" }
+                version
+            }
+        }
 
         /**
          * Fichier `version` du client, sous le `Dofus_Data` de l'install Ankama. Résolu via

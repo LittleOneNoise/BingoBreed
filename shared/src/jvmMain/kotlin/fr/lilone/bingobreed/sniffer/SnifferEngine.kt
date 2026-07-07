@@ -126,9 +126,10 @@ class SnifferEngine(
 
     private val _stableMounts = MutableStateFlow<Map<String, Mount>>(emptyMap())
     /**
-     * Registre des montures connues de l'**étable** (depuis `hhv`, + celles sorties de l'enclos),
-     * exposé à l'UI (onglet Étable) et utilisé pour réinjecter les données d'une monture qui
-     * (re)entre dans l'enclos via un transfert `hif` (le `hif` ne porte que l'UUID).
+     * Registre des montures connues de l'**étable** (collection complète `hrp`, montures sorties de
+     * l'enclos, nouveau-nés `hqq` et clones `htb`), exposé à l'UI (onglet Étable) et utilisé pour
+     * réinjecter les données d'une monture qui (re)entre dans l'enclos via un transfert `hqv`/`hsw`
+     * (qui ne porte que l'UUID).
      */
     val stableMounts: StateFlow<Map<String, Mount>> = _stableMounts.asStateFlow()
 
@@ -262,9 +263,17 @@ class SnifferEngine(
                                 clearConsumedFrom(found)
                             }
 
-                            // Accouplement (`htq`) : les 2 parents sont consommés → exclus du planner.
+                            // Accouplement (`htf`) : les 2 parents sont consommés → exclus du planner.
                             PaddockMapper.bredPair(decoded, dynamic)?.let { ids ->
                                 _consumedMounts.update { it + ids }
+                            }
+                            // Résultat d'accouplement (`hqq`) / clonage (`htb`) : enregistre le nouveau-né
+                            // et l'état à jour des parents dans l'étable (le push complet `hrp` n'arrive
+                            // qu'à la 1ʳᵉ ouverture de l'élevage).
+                            PaddockMapper.bredOffspring(decoded, dynamic)?.let { _stableMounts.update { s -> s + it } }
+                            PaddockMapper.clonedMount(decoded, dynamic)?.let { found ->
+                                _stableMounts.update { it + found }
+                                clearConsumedFrom(found)
                             }
 
                             AchievementMapper.requestedCategory(decoded, dynamic)?.let { lastAchievementCategory = it }

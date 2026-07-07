@@ -25,18 +25,20 @@ object PaddockMapper {
 
     /**
      * Codes type_url (sans préfixe `type.ankama.com/`). À ré-identifier après patch.
-     * Resynchronisés au patch 2026-06 (cf. README §2). Les noms obfusqués sont relevés dans les
+     * Resynchronisés au patch 2026-07 (client 3.6.6.6). Les noms obfusqués sont relevés dans les
      * logs de diagnostic puis croisés avec `output.proto` pour leurs numéros de champ.
      */
-    const val CODE_CONTENT = "hrk"        // S→C : push complet du contenu de l'enclos (fnke→fnjw→htu)
-    const val CODE_UPDATE = "hpv"         // S→C : push de mise à jour de l'enclos (fnfr→htu)
-    const val CODE_SELECT = "hsi"         // C→S : sélection d'un enclos (porte l'index)
-    const val CODE_TRANSFER = "hqb"       // S→C : changement d'emplacement de montures (enclos↔étable)
-    const val CODE_STABLE = "hqp"         // S→C : contenu de l'étable (réponse à `htf`)
-    const val CODE_GAUGE_ON = "hse"       // C→S : activer une jauge
-    const val CODE_GAUGE_OFF = "hsr"      // C→S : désactiver une jauge
-    const val CODE_GAUGE_ON_RESP = "hpr"  // S→C : réponse d'activation (jauges auto-désactivées)
-    const val CODE_BREED = "htq"          // C→S : clic « Accoupler » (porte les 2 UUID parents)
+    const val CODE_CONTENT = "hss"        // S→C : contenu d'enclos sur sélection (hss.fnan(3)→hsq.fnag(2)=huh)
+    const val CODE_UPDATE = "htr"         // S→C : push de mise à jour de l'enclos (htr.fnek(1)=huh)
+    const val CODE_SELECT = "hsg"         // C→S : sélection d'un enclos (porte l'index, hsg.fmzd(2))
+    const val CODE_TRANSFER = "hsw"       // S→C : changement d'emplacement de montures (hsw.fnbd map<uuid,hst>)
+    const val CODE_STABLE = "hrp"         // S→C : collection complète des montures (hrp.fmxg→hrn, maps fmwz/fmxb)
+    const val CODE_GAUGE_ON = "hqa"       // C→S : activer une jauge (hqa.fmtj hpo)
+    const val CODE_GAUGE_OFF = "hts"      // C→S : désactiver une jauge (hts.fneo/fnep hpo)
+    const val CODE_GAUGE_ON_RESP = "hsm"  // S→C : réponse d'activation (jauges auto-désactivées)
+    const val CODE_BREED = "htf"          // C→S : clic « Accoupler » (porte les 2 UUID parents, htf.fnbz/fncc)
+    const val CODE_BREED_RESULT = "hqq"   // S→C : résultat d'accouplement (parents à jour + nouveau-né)
+    const val CODE_CLONE_RESULT = "htb"   // S→C : monture obtenue par clonage (« dupliquer »)
 
     /**
      * Numéros de champ wire — UNIQUE point de resynchronisation après un patch. Noms **sémantiques**
@@ -44,55 +46,63 @@ object PaddockMapper {
      * (`message.champ`). Identité courante : patch 2026-06.
      */
     private object F {
-        // Contenu complet d'enclos : `hrk`.fnke(3) → hri.fnjw(2) → htu
-        const val CONTENT_WRAPPER = 3     // hrk.fnke → hri
-        const val CONTENT_BODY = 2        // hri.fnjw → htu (jauges + montures)
-        // Mise à jour d'enclos : `hpv`.fnfr(2) → htu
-        const val UPDATE_BODY = 2         // hpv.fnfr → htu
-        // Sélection d'enclos : `hsi`.fnng(3) int32 (index 1..6)
-        const val SELECT_INDEX = 3        // hsi.fnng
-        // Transfert de montures : `hqb`.fngm(2) map<string,hpz> (clé = UUID)
-        const val TRANSFER_MAP = 2        // hqb.fngm
-        // (Dés)activation d'une jauge : élément hpd
-        const val GAUGE_ON_ELEMENT = 2    // hse.fnmw
-        const val GAUGE_OFF_ELEMENT = 3   // hsr.fnoh
-        // Accouplement : `htq` porte les 2 UUID parents (string), fnrr(1) et fnru(3)
-        const val BREED_PARENT_1 = 1      // htq.fnrr
-        const val BREED_PARENT_2 = 3      // htq.fnru
-        // Réponse d'activation (jauges auto-désactivées) : `hpr`.fnfc(2) → hpp.fnev(2) rep hpd
-        const val GAUGE_RESP_BODY = 2     // hpr.fnfc → hpp  (⚠️ liste à confirmer, capture vide)
-        const val GAUGE_RESP_ELEMENTS = 2 // hpp.fnev
-        // Étable : `hqp`.fnhu(1) → hqn ; montures dans fnho(1) et/ou fnhq(3) <string,hsx>
-        const val STABLE_WRAPPER = 1      // hqp.fnhu → hqn
-        const val STABLE_MOUNTS_A = 1     // hqn.fnho
-        const val STABLE_MOUNTS_B = 3     // hqn.fnhq
-        // Contenu d'enclos (htu)
-        const val ACTIVE_ELEMENTS = 4     // htu.fnsn  rep hpd
-        const val FUEL_GAUGES = 2         // htu.fnsl  rep hrm
-        const val MOUNTS = 5              // htu.fnso  map<string,hsx>
-        // Jauge carburant (hrm)
-        const val FUEL_VALUE = 2          // hrm.fnkn
-        const val FUEL_ELEMENT = 3        // hrm.fnko  hpd
-        // Monture (hsx) — cf. README §2. Ints désambiguïsés par plage ; bools par sanity.
-        const val MOUNT_APPEARANCE = 3    // hsx.fnpj
-        const val MOUNT_NAME = 4          // hsx.fnpk (seul string)
-        const val MOUNT_LEVEL = 5         // hsx.fnpm (seul int ≤ 200)
-        const val MOUNT_XP = 11           // hsx.fnps (≈ total jauges ; non critique)
-        const val MOUNT_PARENTS = 2       // hsx.fnpi (sous-msg hsv)
-        const val MOUNT_EFFECTS = 13      // hsx.fnpu
-        const val MOUNT_SERENITY = 7      // hsx.fnpo (seul int dans ±5000)
-        const val MOUNT_STERILE = 9       // hsx.fnpq (true ; n'apparaît que sur jauges max)
-        const val MOUNT_SEX = 8           // hsx.fnpp (true=mâle ; fnpn=6 = bool inconnu)
-        const val MOUNT_GAUGES = 10       // hsx.fnpr  rep hsu
-        // Généalogie (hsv)
-        const val PARENT_1 = 1            // hsv.fnpb
-        const val PARENT_2 = 2            // hsv.fnpc
-        // Jauge monture (hsu)
-        const val MGAUGE_TYPE = 1         // hsu.fnow  hpe
-        const val MGAUGE_VALUE = 2        // hsu.fnox
-        // Effet (lip)
-        const val EFFECT_ID = 11          // lip.gbpd
-        const val EFFECT_VALUE = 10       // lip.gbpo (valeur simple ; complexe = gbpl=7)
+        // Contenu complet d'enclos : `hss`.fnan(3) → hsq.fnag(2) → huh
+        const val CONTENT_WRAPPER = 3     // hss.fnan → hsq
+        const val CONTENT_BODY = 2        // hsq.fnag → huh (jauges + montures)
+        // Mise à jour d'enclos : `htr`.fnek(1) → huh
+        const val UPDATE_BODY = 1         // htr.fnek → huh
+        // Sélection d'enclos : `hsg`.fmzd(2) int32 (index 1..6)
+        const val SELECT_INDEX = 2        // hsg.fmzd
+        // Transfert de montures : `hsw`.fnbd(1) map<string,hst> (clé = UUID)
+        const val TRANSFER_MAP = 1        // hsw.fnbd
+        // (Dés)activation d'une jauge : élément hpo
+        const val GAUGE_ON_ELEMENT = 1    // hqa.fmtj
+        const val GAUGE_OFF_ELEMENT = 2   // hts.fnep (l'élément désactivé ; fneo(1) reste vide) ✓
+        // Accouplement : `htf` porte les 2 UUID parents (string), fnbz(1) et fncc(3)
+        const val BREED_PARENT_1 = 1      // htf.fnbz
+        const val BREED_PARENT_2 = 3      // htf.fncc
+        // Résultat d'accouplement : `hqq`.fmva(2) → hqo ; parents fmur(3), nouveau-né fmuu(6) <string,hty>
+        const val BREED_RESULT_BODY = 2   // hqq.fmva → hqo
+        const val BREED_RESULT_PARENTS = 3 // hqo.fmur  map<string,hty>
+        const val BREED_RESULT_CHILD = 6  // hqo.fmuu  map<string,hty>
+        // Résultat de clonage : `htb`.fnbo(1) → hsz{fnbi(1)=uuid, fnbj(2)=hty}
+        const val CLONE_RESULT_BODY = 1   // htb.fnbo → hsz
+        const val CLONE_UUID = 1          // hsz.fnbi
+        const val CLONE_MOUNT = 2         // hsz.fnbj  hty
+        // Réponse d'activation (jauges auto-désactivées) : `hsm`.fmzu(1) → hsk.fmzq(1) rep hpo
+        const val GAUGE_RESP_BODY = 1     // hsm.fmzu → hsk
+        const val GAUGE_RESP_ELEMENTS = 1 // hsk.fmzq
+        // Collection montures : `hrp`.fmxg(1) → hrn ; montures dans fmwz(1) et/ou fmxb(3) <string,hty>
+        const val STABLE_WRAPPER = 1      // hrp.fmxg → hrn
+        const val STABLE_MOUNTS_A = 1     // hrn.fmwz
+        const val STABLE_MOUNTS_B = 3     // hrn.fmxb
+        // Contenu d'enclos (huh)
+        const val ACTIVE_ELEMENTS = 2     // huh.fnhh  rep hpo
+        const val FUEL_GAUGES = 1         // huh.fnhg  rep hqg
+        const val MOUNTS = 3              // huh.fnhi  map<string,hty>
+        // Jauge carburant (hqg)
+        const val FUEL_VALUE = 2          // hqg.fmua
+        const val FUEL_ELEMENT = 1        // hqg.fmtz  hpo
+        // Monture (hty). Ints désambiguïsés par plage ; bools par sanity.
+        const val MOUNT_APPEARANCE = 1    // hty.fnfq
+        const val MOUNT_NAME = 7          // hty.fnfw (seul string)
+        const val MOUNT_LEVEL = 3         // hty.fnfs (⚠️ int candidat niveau ; à confirmer sur montures connues)
+        const val MOUNT_XP = 11           // hty.fngb (≈ total jauges ; non critique)
+        const val MOUNT_PARENTS = 10      // hty.fnga (sous-msg htw)
+        const val MOUNT_EFFECTS = 9       // hty.fnfz  rep ldk
+        const val MOUNT_SERENITY = 12     // hty.fngc (int, peut être négatif)
+        const val MOUNT_STERILE = 4       // hty.fnft (true=stérile ; présent sur muldo stérile, absent sur féconde ✓)
+        const val MOUNT_SEX = 2           // hty.fnfr (true=un sexe ; diffère entre les 2 parents accouplés ✓)
+        const val MOUNT_GAUGES = 5        // hty.fnfu  rep htv
+        // Généalogie (htw)
+        const val PARENT_1 = 2            // htw.fnfl
+        const val PARENT_2 = 3            // htw.fnfm
+        // Jauge monture (htv)
+        const val MGAUGE_TYPE = 3         // htv.fnfg  hpp (fnfe(1) = 2ᵉ hpp, non discriminant)
+        const val MGAUGE_VALUE = 2        // htv.fnff
+        // Effet (ldk)
+        const val EFFECT_ID = 2           // ldk.gahn
+        const val EFFECT_VALUE = 3        // ldk.gahr (valeur simple ; complexe = gaia=10 ldd)
         // Entrée de map protobuf (standard)
         const val MAP_KEY = 1
         const val MAP_VALUE = 2
@@ -133,6 +143,35 @@ object PaddockMapper {
         if (message.code != CODE_BREED) return null
         val msg = dynamic ?: return null
         return setOfNotNull(msg.str(F.BREED_PARENT_1), msg.str(F.BREED_PARENT_2)).ifEmpty { null }
+    }
+
+    /**
+     * Montures issues d'un **accouplement** (`hqq`) indexées par UUID : le **nouveau-né** ainsi que
+     * l'état **à jour des 2 parents** (post-repro : jauges remises à zéro, stérilité éventuelle).
+     * null si ce n'est pas ce message. Sert à garder l'étable fraîche sans attendre un nouveau push
+     * complet — `hrp` (collection) n'arrive qu'à la 1ʳᵉ ouverture de l'interface d'élevage.
+     */
+    fun bredOffspring(message: DecodedGameAny, dynamic: Message?): Map<String, Mount>? {
+        if (message.code != CODE_BREED_RESULT) return null
+        val body = dynamic?.msg(F.BREED_RESULT_BODY) ?: return null
+        val entries = body.messageList(F.BREED_RESULT_PARENTS) + body.messageList(F.BREED_RESULT_CHILD)
+        return entries.mapNotNull { entry ->
+            val uuid = entry.str(F.MAP_KEY) ?: return@mapNotNull null
+            val value = entry.msg(F.MAP_VALUE) ?: return@mapNotNull null
+            uuid to toMount(uuid, value)
+        }.toMap().ifEmpty { null }
+    }
+
+    /**
+     * Monture obtenue par **clonage** (`htb`) indexée par UUID, ou null si autre message. Comme
+     * [bredOffspring], maintient l'étable à jour entre deux push complets.
+     */
+    fun clonedMount(message: DecodedGameAny, dynamic: Message?): Map<String, Mount>? {
+        if (message.code != CODE_CLONE_RESULT) return null
+        val hsz = dynamic?.msg(F.CLONE_RESULT_BODY) ?: return null
+        val uuid = hsz.str(F.CLONE_UUID) ?: return null
+        val value = hsz.msg(F.CLONE_MOUNT) ?: return null
+        return mapOf(uuid to toMount(uuid, value))
     }
 
     /** Élément de jauge venant d'être **activé**, ou null si autre message. */
