@@ -51,6 +51,26 @@ class ReproPlannerTest {
     }
 
     @Test
+    fun downstreamTargetsMapsAncestorsToTheirFinalSuccess() {
+        // Roux = "Doré et Pourpre" × "Doré et Orchidée" : ces 2 parents (et Roux lui-même) servent Roux.
+        val serves = ReproPlanner.downstreamTargets(listOf("Roux"))
+        assertEquals(listOf("Roux"), serves["Roux"])
+        assertEquals(listOf("Roux"), serves["Doré et Pourpre"])
+        assertEquals(listOf("Roux"), serves["Doré et Orchidée"])
+    }
+
+    @Test
+    fun readyCrossCarriesItsFinalTarget() {
+        val stock = stockOf(
+            mount("Doré et Pourpre", Fertility.FECONDE, Sex.FEMALE, level = 150),
+            mount("Doré et Orchidée", Fertility.FECONDE, Sex.MALE, level = 150),
+        )
+        val cross = ReproPlanner.plan(listOf("Roux"), stock, optimakina = false)
+            .stepsOf(StepStatus.READY).first().action as NextAction.Cross
+        assertEquals(listOf("Roux"), cross.finalTargets)
+    }
+
+    @Test
     fun cascadeFromEmptyStockExpandsDownToGen1() {
         val cascade = ReproPlanner.buildCascade("Roux", empty)
         // Roux = "Doré et Pourpre" × "Doré et Orchidée" ; les gen 1 sont des feuilles (capture, pas une étape).
@@ -240,21 +260,6 @@ class ReproPlannerTest {
         )
         val plan = ReproPlanner.plan(listOf("Prune et Doré"), stock, optimakina = false)
         assertTrue(plan.steps.any { (it.action as? NextAction.RaiseGauges)?.mount?.uuid == tp.uuid })
-    }
-
-    @Test
-    fun extractableListsTerminalRobesButNotAncestors() {
-        // « Ébène et Émeraude » (gen 8 terminal, ancêtre de rien) → extractible. « Doré » (ancêtre de la
-        // cible « Doré et Pourpre ») → utile, jamais listé.
-        val stock = stockOf(
-            mount("Ébène et Émeraude", Fertility.FECONDE, Sex.MALE),
-            mount("Doré", Fertility.FECONDE, Sex.MALE),
-            mount("Pourpre", Fertility.FECONDE, Sex.FEMALE),
-        )
-        val plan = ReproPlanner.plan(listOf("Doré et Pourpre"), stock, optimakina = false)
-        assertTrue("Ébène et Émeraude" in plan.extractableByRobe)
-        assertTrue("Doré" !in plan.extractableByRobe)
-        assertTrue("Pourpre" !in plan.extractableByRobe)
     }
 
     @Test

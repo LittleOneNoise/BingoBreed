@@ -49,6 +49,11 @@ data class OwnedMount(
     val location: MountLocation = MountLocation.Stable,
     /** Vient d'être accouplée (`htq`) : jauges en reset côté jeu → ni féconde ni utilisable maintenant. */
     val consumed: Boolean = false,
+    /**
+     * Robes des 2 parents (= grands-parents d'un futur bébé), pour le calcul généalogique
+     * ([BreedingGenetics]). Vide si généalogie inconnue ou ids non résolus.
+     */
+    val parents: List<String> = emptyList(),
 ) {
     /** Bande de sérénité (jauges actuellement montables), pour conseiller la montée. */
     val serenityBand: SerenityBand get() = SerenityBand.of(serenity)
@@ -105,6 +110,7 @@ class OwnedStock(val byRobe: Map<String, List<OwnedMount>>) {
             gauges = m.gauges,
             location = location,
             consumed = consumed,
+            parents = m.parents.mapNotNull { MuldoRobes.BY_ID[it]?.name },
         )
     }
 }
@@ -117,7 +123,16 @@ sealed interface NextAction {
         val targetGen: Int,
         val mother: OwnedMount,   // femelle
         val father: OwnedMount,   // mâle
+        /** Proba d'atteindre la **génération cible** (toutes robes de cette gén. confondues) = `calcP`. */
         val pSuccess: Double,
+        /** Proba **isolée** d'obtenir exactement la robe [target] (part de [pSuccess] au prorata des poids). */
+        val pTargetRobe: Double,
+        /**
+         * Succès **restants** que ce croisement sert au final (par génération décroissante, but le plus
+         * haut d'abord). Inclut [target] lui-même s'il est déjà un succès à valider. Sert à **justifier**
+         * dans l'UI la naissance d'un muldo intermédiaire par son but final. Vide si non calculé.
+         */
+        val finalTargets: List<String> = emptyList(),
     ) : NextAction
 
     /** Monter les jauges d'une monture fertile pour la rendre féconde. */
@@ -174,11 +189,6 @@ data class ReproPlan(
     val justBred: List<OwnedMount>,
     /** Toutes les robes restant à valider, triées par génération. */
     val remainingTargets: List<String>,
-    /**
-     * Montures **extractibles**, groupées par robe : leur robe n'est plus dans l'ascendance d'aucune
-     * cible restante (cf. [ReproPlanner.usefulRobes]) → elles ne peuvent plus contribuer à un succès.
-     */
-    val extractableByRobe: Map<String, List<OwnedMount>>,
     val fullSuccess: Boolean,
 ) {
     /** Raccourcis de regroupement pour l'UI. */

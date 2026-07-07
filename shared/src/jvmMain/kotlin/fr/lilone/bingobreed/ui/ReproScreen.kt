@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,8 +21,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -41,6 +44,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import fr.lilone.bingobreed.breeding.BreedingGenetics
 import fr.lilone.bingobreed.breeding.ReproDump
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.painterResource
@@ -97,28 +101,31 @@ fun ReproScreen(
     val total = MuldoRobes.ALL.size
 
     val clipboard = LocalClipboardManager.current
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        ReproHeader(remaining.size, total, now, lastGameFrameAt) {
-            clipboard.setText(AnnotatedString(ReproDump.build(stable, paddocks, plan, remaining)))
-        }
-        Spacer(Modifier.height(12.dp))
-        SpeciesTabs()
-        Spacer(Modifier.height(10.dp))
-        OptimakinaToggle(optimakina, onChange = { optimakina = it })
-        Spacer(Modifier.height(12.dp))
+    var showCalc by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(16.dp)) {
+            ReproHeader(
+                remaining.size, total, now, lastGameFrameAt,
+                onCopyState = { clipboard.setText(AnnotatedString(ReproDump.build(stable, paddocks, plan, remaining))) },
+                onShowCalc = { showCalc = true },
+            )
+            Spacer(Modifier.height(12.dp))
+            SpeciesTabs()
+            Spacer(Modifier.height(10.dp))
+            OptimakinaToggle(optimakina, onChange = { optimakina = it })
+            Spacer(Modifier.height(12.dp))
 
-        if (plan.fullSuccess) {
-            FullSuccess()
-            return@Column
+            if (plan.fullSuccess) {
+                FullSuccess()
+            } else {
+                Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
+                    Checklist(plan)
+                    Spacer(Modifier.height(16.dp))
+                    RemainingRobes(remaining)
+                }
+            }
         }
-
-        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
-            Checklist(plan)
-            Spacer(Modifier.height(16.dp))
-            RemainingRobes(remaining)
-            Spacer(Modifier.height(16.dp))
-            ExtractableMounts(plan.extractableByRobe)
-        }
+        if (showCalc) ReproCalcOverlay(plan, optimakina, onClose = { showCalc = false })
     }
 }
 
@@ -324,11 +331,16 @@ private fun JustBredRow(m: OwnedMount) {
 }
 
 @Composable
-private fun ReproHeader(remaining: Int, total: Int, now: Long, lastGameFrameAt: Long?, onCopyState: () -> Unit) {
+private fun ReproHeader(
+    remaining: Int, total: Int, now: Long, lastGameFrameAt: Long?,
+    onCopyState: () -> Unit, onShowCalc: () -> Unit,
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Reproduction", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(Modifier.width(10.dp))
-        CopyStateButton(onCopyState)
+        CopyButton("📋", "Copier l'état", onCopyState)
+        Spacer(Modifier.width(6.dp))
+        HeaderChip("🧮", "Récap calcul", onShowCalc)
         Spacer(Modifier.weight(1f))
         NetworkChip(now, lastGameFrameAt)
         Spacer(Modifier.width(12.dp))
@@ -340,9 +352,9 @@ private fun ReproHeader(remaining: Int, total: Int, now: Long, lastGameFrameAt: 
     }
 }
 
-/** Petit bouton discret « copier l'état » (étable + enclos + directives) pour le debug. */
+/** Petit bouton discret « copier vers le presse-papier » (debug) : [icon] + [label], feedback « Copié ». */
 @Composable
-private fun CopyStateButton(onCopy: () -> Unit) {
+private fun CopyButton(icon: String, label: String, onCopy: () -> Unit) {
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) {
         if (copied) { delay(1500); copied = false }
@@ -354,15 +366,218 @@ private fun CopyStateButton(onCopy: () -> Unit) {
             .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (copied) "✓" else "📋", style = MaterialTheme.typography.labelSmall)
+        Text(if (copied) "✓" else icon, style = MaterialTheme.typography.labelSmall)
         Spacer(Modifier.width(4.dp))
         Text(
-            if (copied) "Copié" else "Copier l'état",
+            if (copied) "Copié" else label,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
+
+/** Petit bouton d'en-tête (icône + label) déclenchant une action ponctuelle (ex. ouvrir le récap). */
+@Composable
+private fun HeaderChip(icon: String, label: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(icon, style = MaterialTheme.typography.labelSmall)
+        Spacer(Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/* ------------------------------------------------------------ Récap calcul des bébés (popup) */
+
+/**
+ * Overlay fermable expliquant **comment sont calculés les bébés obtenables** (modèle généalogie 2026,
+ * cf. [BreedingGenetics]) pour chaque croisement recommandé par le plan : arbres pondérés des parents,
+ * génération cible, et la distribution des robes possibles avec leurs probabilités. Sert à vérifier le
+ * modèle contre les probabilités affichées en jeu. Scrim cliquable + croix pour fermer.
+ */
+@Composable
+private fun ReproCalcOverlay(plan: ReproPlan, optimakina: Boolean, onClose: () -> Unit) {
+    val crosses = remember(plan) { plan.steps.mapNotNull { it.action as? NextAction.Cross } }
+    Box(
+        Modifier.fillMaxSize().background(Color(0xE60B0E13)).clickable(onClick = onClose),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            // clickable no-op : absorbe le clic pour ne pas fermer quand on interagit avec la carte.
+            Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.9f).clickable(onClick = {}),
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 4.dp,
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Comment les bébés sont calculés", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Row(
+                        Modifier.clip(CircleShape).clickable(onClick = onClose).padding(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) { Text("✕", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Modèle 2026 : un croisement entre une race de l'arbre du père et une de l'arbre de la mère " +
+                        "(parents ×5, grands-parents ×3 · poids mono 9, bi 2, mono gen 9 = 2). La génération la plus " +
+                        "haute atteignable (« cible ») reçoit 30 %+0,15 %/niv" +
+                        (if (optimakina) " +10 % optimakina" else "") + ", réparti au prorata des poids ; le reste va aux autres générations.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+                Spacer(Modifier.height(12.dp))
+
+                if (crosses.isEmpty()) {
+                    Text(
+                        "Aucun croisement concret proposé pour l'instant.\nReviens quand le coach affiche une étape « Prêt maintenant » ou un croisement intermédiaire.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
+                        crosses.forEachIndexed { i, c ->
+                            if (i > 0) Spacer(Modifier.height(16.dp))
+                            CrossCalcCard(c, optimakina)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Détail du calcul d'un croisement : parents + arbres pondérés, génération cible, robes possibles. */
+@Composable
+private fun CrossCalcCard(c: NextAction.Cross, optimakina: Boolean) {
+    val out = remember(c, optimakina) {
+        BreedingGenetics.compute(
+            fatherRobe = c.father.robe, fatherParents = c.father.parents, fatherLevel = c.father.level,
+            motherRobe = c.mother.robe, motherParents = c.mother.parents, motherLevel = c.mother.level,
+            optimakina = optimakina,
+        )
+    }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)).padding(12.dp),
+    ) {
+        // Titre : robe visée + parents.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RobeMark(c.target, 22.dp)
+            Spacer(Modifier.width(8.dp))
+            Text("vise ${c.target}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(6.dp))
+            Text("G${c.targetGen}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        CrossFinality(c)
+        Spacer(Modifier.height(6.dp))
+        TreeLine("♀", c.mother.robe, c.mother.level, c.mother.parents)
+        TreeLine("♂", c.father.robe, c.father.level, c.father.parents)
+        Spacer(Modifier.height(8.dp))
+
+        // Génération cible + note sur la robe visée.
+        val visee = out.chances.firstOrNull { it.robe == c.target }
+        val note = when {
+            visee == null -> "robe visée absente du pool — ce couple ne peut pas la produire"
+            visee.targetGen -> "robe visée = génération cible"
+            else -> "⚠ la robe visée n'est pas la génération cible (le pool atteint plus haut)"
+        }
+        Text(
+            "Génération cible G${out.targetGen} · ${pctStr(out.pTargetGen)} — $note",
+            style = MaterialTheme.typography.labelMedium,
+            color = if (visee?.targetGen == true) BreedColors.feconde else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+
+        // Robes possibles, proba décroissante.
+        out.chances.forEach { rc ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    pctStr(rc.p), style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (rc.targetGen) FontWeight.Bold else FontWeight.Normal,
+                    color = if (rc.robe == c.target) BreedColors.feconde else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.width(64.dp),
+                )
+                RobeMark(rc.robe, 18.dp)
+                Spacer(Modifier.width(6.dp))
+                Text(rc.robe, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.width(6.dp))
+                Text("G${rc.gen}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (rc.robe == c.target) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("◀ visée", style = MaterialTheme.typography.labelSmall, color = BreedColors.feconde)
+                }
+            }
+        }
+    }
+}
+
+/** Une ligne d'arbre d'un parent : sexe, robe propre (×5), grands-parents (×3). */
+@Composable
+private fun TreeLine(sex: String, robe: String, level: Int, parents: List<String>) {
+    val gp = if (parents.isEmpty()) "grands-parents inconnus"
+    else parents.joinToString(", ") { "$it ×3" }
+    Text(
+        "$sex $robe niv$level ×5  ·  $gp",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/**
+ * Justifie un croisement par sa **finalité** : soit il valide directement le succès visé, soit c'est un
+ * **maillon intermédiaire** vers un (ou plusieurs) succès restant plus haut. Rien si non calculé.
+ */
+@Composable
+private fun CrossFinality(action: NextAction.Cross) {
+    if (action.finalTargets.isEmpty()) return
+    val downstream = action.finalTargets.filter { it != action.target }
+    Row(
+        Modifier.padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (downstream.isEmpty()) {
+            Text(
+                "🎯 objectif final — ce croisement valide le succès visé",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            val goal = downstream.first()
+            Text(
+                "↳ maillon vers l'objectif ",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            RobeMark(goal, 14.dp)
+            Spacer(Modifier.width(3.dp))
+            Text(
+                "$goal G${MuldoRobes.byName(goal)?.gen ?: 0}",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (downstream.size > 1) {
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "+${downstream.size - 1} autre(s)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private fun pctStr(p: Double): String = "%.2f%%".format(p * 100)
 
 /** Sélecteur d'espèce : Muldo actif, les autres « bientôt » (grisées). */
 @Composable
@@ -435,12 +650,13 @@ private fun ActionBody(action: NextAction) {
                 RobeChip(action.target, action.targetGen)
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "réussite ≈ ${pct(action.pSuccess)}",
+                    "robe visée ≈ ${pct(action.pTargetRobe)}",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = successColor(action.pSuccess),
+                    color = successColor(action.pTargetRobe),
                 )
             }
+            CrossFinality(action)
         }
 
         is NextAction.RaiseGauges -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -590,60 +806,6 @@ private fun RemainingRobes(remaining: List<String>) {
                         Spacer(Modifier.width(5.dp))
                         Text(robe, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                     }
-                }
-            }
-        }
-    }
-}
-
-/* ------------------------------------------------------------ Montures extractibles */
-
-/**
- * Section discrète, repliée par défaut : les montures dont la robe n'est plus dans l'ascendance
- * d'aucune cible restante (cf. [ReproPlanner.usefulRobes]) — donc bonnes pour l'extracteur. Groupées
- * par robe (compte), génération **décroissante** d'abord (les gen terminales hautes en tête).
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ExtractableMounts(byRobe: Map<String, List<OwnedMount>>) {
-    if (byRobe.isEmpty()) return
-    var expanded by remember { mutableStateOf(false) }
-    val total = byRobe.values.sumOf { it.size }
-    val rows = byRobe.entries
-        .sortedWith(compareByDescending<Map.Entry<String, List<OwnedMount>>> { MuldoRobes.byName(it.key)?.gen ?: 0 }.thenByDescending { it.value.size })
-
-    Row(
-        Modifier.clip(RoundedCornerShape(6.dp)).clickable { expanded = !expanded }.padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(if (expanded) "▾" else "▸", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(6.dp))
-        Text("♻ Montures extractibles ($total)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-    }
-    if (expanded) {
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Robe hors recette de toute cible restante — ne peut plus servir (selon les recettes connues).",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            rows.forEach { (robe, mounts) ->
-                Row(
-                    Modifier.clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
-                        .padding(horizontal = 7.dp, vertical = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RobeMark(robe, 18.dp)
-                    Spacer(Modifier.width(5.dp))
-                    Text(robe, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
-                    MuldoRobes.byName(robe)?.gen?.let {
-                        Spacer(Modifier.width(4.dp))
-                        Text("G$it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Spacer(Modifier.width(5.dp))
-                    Text("×${mounts.size}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

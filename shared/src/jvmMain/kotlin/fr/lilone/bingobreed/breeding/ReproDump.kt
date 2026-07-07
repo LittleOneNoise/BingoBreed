@@ -52,7 +52,8 @@ object ReproDump {
 
     private fun actionLine(a: NextAction): String = when (a) {
         is NextAction.Cross ->
-            "Cross target=\"${a.target}\" gen=${a.targetGen} p=${(a.pSuccess * 100).toInt()}% " +
+            "Cross target=\"${a.target}\" gen=${a.targetGen} pGen=${(a.pSuccess * 100).toInt()}% " +
+                "pRobe=${(a.pTargetRobe * 100).toInt()}% serves=${a.finalTargets} " +
                 "mother=${ownedRef(a.mother)} father=${ownedRef(a.father)}"
         is NextAction.RaiseGauges -> {
             val m = a.mount

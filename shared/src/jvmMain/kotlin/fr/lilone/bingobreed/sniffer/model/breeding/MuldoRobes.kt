@@ -173,6 +173,17 @@ object MuldoRobes {
     fun recipeOf(name: String): Pair<String, String>? = BY_NAME[name]?.recipe
 
     /**
+     * Table **inverse** de [RECIPE] : paire de robes parentes (ordre indifférent) → robe enfant.
+     * C'est la fonction « croisement » du modèle généalogique (cf. [fr.lilone.bingobreed.breeding.BreedingGenetics]) :
+     * croiser deux races présentes dans les arbres des parents produit cette robe.
+     */
+    private val CROSS: Map<Set<String>, String> =
+        RECIPE.entries.associate { (child, p) -> setOf(p.first, p.second) to child }
+
+    /** Robe enfant produite en croisant [a] × [b] (ordre indifférent), ou null si aucune recette connue. */
+    fun childOf(a: String, b: String): String? = CROSS[setOf(a, b)]
+
+    /**
      * Résout un nom de robe **lâche** (casse, accents et ordre des couleurs indifférents) vers la
      * robe canonique. Indispensable pour réconcilier les libellés de succès (« Muldo Ebène »,
      * « Emeraude »…) avec les noms accentués de [Robes.GENERATIONS]. null si non trouvé.

@@ -46,7 +46,7 @@ object ReproPlanner {
         captureHorizon: Int = DEFAULT_CAPTURE_HORIZON,
     ): ReproPlan {
         if (remaining.isEmpty()) {
-            return ReproPlan(emptyList(), emptyList(), emptyList(), emptyMap(), fullSuccess = true)
+            return ReproPlan(emptyList(), emptyList(), emptyList(), fullSuccess = true)
         }
         val remainingSet = remaining.toHashSet()
 
@@ -69,9 +69,10 @@ object ReproPlanner {
         // travail utile et borné par le stock ; les robes hors ascendance (gen terminales déjà validées)
         // restent exclues. [needed] ⊆ [raiseAncestry].
         val raiseAncestry = usefulRobes(remaining)
-        // Montures **extractibles** : robe hors ascendance des cibles → ne peut plus contribuer à aucun
-        // succès restant (cf. [usefulRobes]). Groupées par robe pour l'UI.
-        val extractableByRobe = stock.byRobe.filterKeys { it !in raiseAncestry }
+
+        // Pour chaque robe de l'ascendance : les **succès restants** qu'elle sert au final. Sert à
+        // justifier dans l'UI la naissance d'un intermédiaire (« maillon vers l'objectif X »).
+        val serves = downstreamTargets(remaining)
 
         val steps = LinkedHashMap<String, ReproStep>() // clé de dédup → étape (1re occurrence conservée)
         fun put(key: String, action: NextAction, status: StepStatus) = steps.putIfAbsent(key, ReproStep(action, status))
@@ -94,7 +95,8 @@ object ReproPlanner {
             if (recipe != null && stock.fecondes(recipe.first).isNotEmpty() && stock.fecondes(recipe.second).isNotEmpty()) {
                 when (val a = pairCross(robe, mr.gen, recipe.first, recipe.second, stock, optimakina)) {
                     is NextAction.Cross ->
-                        put("cross:$robe", a, if (robe in remainingSet) StepStatus.READY else StepStatus.TO_PREPARE)
+                        put("cross:$robe", a.copy(finalTargets = serves[robe].orEmpty()),
+                            if (robe in remainingSet) StepStatus.READY else StepStatus.TO_PREPARE)
                     is NextAction.NeedOppositeSex -> put("oppsex:$robe", a, StepStatus.TO_PREPARE)
                     else -> Unit
                 }
@@ -118,16 +120,16 @@ object ReproPlanner {
             steps = sorted,
             justBred = stock.justBred().distinctBy { it.uuid },
             remainingTargets = remaining,
-            extractableByRobe = extractableByRobe,
             fullSuccess = false,
         )
     }
 
     /**
-     * Robes **utiles** : ascendance-recette **complète** des cibles restantes (sans élagage). Une robe
-     * hors de cet ensemble ne peut plus être parente (directe ou transitive) d'aucun succès restant : ses
-     * montures sont donc extractibles. Démontrable car une robe ne se produit **que** via sa recette
-     * ([MuldoRobes.recipe]), dont les 2 parents sont par construction dans cette ascendance.
+     * Robes **utiles** : ascendance-recette **complète** des cibles restantes (sans élagage). Sert à
+     * borner les fertiles qu'on propose de monter (on ne monte que les fertiles utiles à l'ascendance
+     * d'une cible restante). Une robe hors de cet ensemble ne peut plus être parente (directe ou
+     * transitive) d'aucun succès restant selon les recettes connues ([MuldoRobes.recipe]), dont les 2
+     * parents sont par construction dans cette ascendance.
      */
     fun usefulRobes(remaining: List<String>): Set<String> {
         val acc = HashSet<String>()
@@ -137,6 +139,23 @@ object ReproPlanner {
         }
         remaining.forEach(::add)
         return acc
+    }
+
+    /**
+     * Pour chaque robe de l'ascendance des cibles restantes, la liste des **succès restants** qu'elle
+     * sert (elle-même incluse si elle est une cible), triée par **génération décroissante** (but final
+     * le plus haut d'abord). Permet à l'UI de justifier un croisement intermédiaire par son objectif.
+     */
+    fun downstreamTargets(remaining: List<String>): Map<String, List<String>> {
+        val map = HashMap<String, MutableList<String>>()
+        for (target in remaining) {
+            usefulRobes(listOf(target)).forEach { ancestor ->
+                map.getOrPut(ancestor) { mutableListOf() }.add(target)
+            }
+        }
+        return map.mapValues { (_, targets) ->
+            targets.sortedWith(compareByDescending<String> { MuldoRobes.byName(it)?.gen ?: 0 }.thenBy { it })
+        }
     }
 
     /** Priorité d'affichage intra-statut : croisements d'abord, captures en dernier (recours). */
@@ -216,30 +235,46 @@ object ReproPlanner {
     /* ------------------------------------------------------------------ interne */
 
     /**
-     * Choisit la meilleure paire féconde de sexes opposés (somme de niveaux max → meilleur p) pour
-     * croiser [aRobe] × [bRobe] → [target]. Si les 2 robes ont des fécondes mais toutes du même sexe,
-     * renvoie [NextAction.NeedOppositeSex]. Pré-requis appelant : chaque robe a ≥1 féconde.
+     * Choisit la meilleure paire féconde de sexes opposés pour croiser [aRobe] × [bRobe] → [target].
+     * On **maximise la proba isolée de la robe visée** ([BreedingGenetics] : `pTargetRobe`), qui dépend
+     * des niveaux **et** des généalogies (grands-parents) des deux fécondes — deux fécondes de même robe
+     * peuvent donc ne pas se valoir. À proba égale, on préfère le **niveau total** le plus haut (meilleure
+     * marge de fécondité/sérénité). D'où l'énumération de tous les couples plutôt qu'un simple max de
+     * niveaux. Si les 2 robes ont des fécondes mais toutes du même sexe, renvoie
+     * [NextAction.NeedOppositeSex]. Pré-requis appelant : chaque robe a ≥1 féconde.
      */
     private fun pairCross(
         target: String, gen: Int, aRobe: String, bRobe: String, stock: OwnedStock, optimakina: Boolean,
     ): NextAction {
         val fa = stock.fecondes(aRobe)
         val fb = stock.fecondes(bRobe)
-        var best: Pair<OwnedMount, OwnedMount>? = null
+        var bestOutcome: BreedingGenetics.Outcome? = null
+        var bestMother: OwnedMount? = null
+        var bestFather: OwnedMount? = null
+        var bestP = -1.0
         var bestLevel = -1
         for (x in fa) for (y in fb) {
-            if (x.uuid != y.uuid && x.sex != y.sex && x.level + y.level > bestLevel) {
-                bestLevel = x.level + y.level
-                best = x to y
+            if (x.uuid == y.uuid || x.sex == y.sex) continue
+            val mother = if (x.sex == Sex.FEMALE) x else y
+            val father = if (x.sex == Sex.MALE) x else y
+            // Distribution génétique du couple : `pTargetGen` = proba de la gén. cible, `pTargetRobe` =
+            // part isolée revenant exactement à la robe visée (0 si ce couple ne peut pas la produire).
+            val outcome = BreedingGenetics.compute(
+                fatherRobe = father.robe, fatherParents = father.parents, fatherLevel = father.level,
+                motherRobe = mother.robe, motherParents = mother.parents, motherLevel = mother.level,
+                optimakina = optimakina,
+            )
+            val p = outcome.chances.firstOrNull { it.robe == target }?.p ?: 0.0
+            val level = mother.level + father.level
+            if (p > bestP || (p == bestP && level > bestLevel)) {
+                bestP = p; bestLevel = level
+                bestOutcome = outcome; bestMother = mother; bestFather = father
             }
         }
-        if (best == null) {
+        if (bestOutcome == null) {
             val have = (fa + fb).firstOrNull()?.sex ?: Sex.MALE
             return NextAction.NeedOppositeSex(target, aRobe, bRobe, have)
         }
-        val (x, y) = best
-        val mother = if (x.sex == Sex.FEMALE) x else y
-        val father = if (x.sex == Sex.MALE) x else y
-        return NextAction.Cross(target, gen, mother, father, BreedingProbability.calcP(mother.level, father.level, optimakina))
+        return NextAction.Cross(target, gen, bestMother!!, bestFather!!, bestOutcome!!.pTargetGen, bestP)
     }
 }
