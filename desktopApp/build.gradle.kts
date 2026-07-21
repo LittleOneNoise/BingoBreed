@@ -19,6 +19,10 @@ compose.desktop {
     application {
         mainClass = "fr.lilone.bingobreed.MainKt"
 
+        // Logs écrits dans <racine du repo>/logs/ (cf. logback.xml) plutôt que dans le profil
+        // utilisateur : plus simple à retrouver/suivre pendant une session de debug en jeu.
+        jvmArgs += "-Dbingobreed.projectDir=${rootProject.projectDir}"
+
         // Mode diagnostic : `./gradlew :desktopApp:run -Pdiagnostic`
         if (project.hasProperty("diagnostic")) {
             jvmArgs += "-Dbingobreed.diagnostic=true"

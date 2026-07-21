@@ -7,10 +7,15 @@
         </encoder>
     </appender>
 
+    <!--
+        Racine des logs : propriété système `bingobreed.projectDir`, injectée par
+        `desktopApp/build.gradle.kts` (= racine du repo). Repli sur `.` (cwd du process) si absente,
+        ex. lancement direct hors Gradle — reste "interne au projet" tant qu'on lance depuis la racine.
+    -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${user.home}/.bingobreed/logs/sniffer.log</file>
+        <file>${bingobreed.projectDir:-.}/logs/sniffer.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>${user.home}/.bingobreed/logs/sniffer.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <fileNamePattern>${bingobreed.projectDir:-.}/logs/sniffer.%d{yyyy-MM-dd}.log</fileNamePattern>
             <maxHistory>7</maxHistory>
         </rollingPolicy>
         <encoder>

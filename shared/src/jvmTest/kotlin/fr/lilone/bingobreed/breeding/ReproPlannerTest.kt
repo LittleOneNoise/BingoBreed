@@ -206,6 +206,25 @@ class ReproPlannerTest {
     }
 
     @Test
+    fun sexDeficitIsAutoInsuredByRerollingADeficientParentsOwnCross() {
+        // Prune + Ivoire fécondes mais toutes deux mâles → le croisement final est bloqué
+        // (NeedOppositeSex). Comme les 2 grands-parents de Prune ont des fécondes de sexes opposés,
+        // `needed` (marqué depuis la cascade de « Prune et Ivoire ») inclut déjà Prune lui-même : le
+        // coach propose donc de relancer un Prune (espoir d'une femelle) plutôt qu'une impasse
+        // silencieuse. C'est l'équivalent concret du `sexPairingFactor` de la spec — pas de calcul de
+        // facteur séparé nécessaire, l'insurance sort naturellement du marquage de cascade existant.
+        val stock = stockOf(
+            mount("Prune", Fertility.FECONDE, Sex.MALE),
+            mount("Ivoire", Fertility.FECONDE, Sex.MALE),
+            mount("Ébène et Ivoire", Fertility.FECONDE, Sex.FEMALE),
+            mount("Turquoise et Pourpre", Fertility.FECONDE, Sex.MALE),
+        )
+        val plan = ReproPlanner.plan(listOf("Prune et Ivoire"), stock, optimakina = false)
+        val reroll = plan.steps.map { it.action }.filterIsInstance<NextAction.Cross>().first { it.target == "Prune" }
+        assertEquals(listOf("Prune et Ivoire"), reroll.finalTargets)
+    }
+
+    @Test
     fun readyCrossesAreListedHighestGenFirst() {
         val stock = stockOf(
             mount("Prune", Fertility.FECONDE, Sex.FEMALE),

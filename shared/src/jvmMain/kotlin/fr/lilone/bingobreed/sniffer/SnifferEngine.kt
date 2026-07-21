@@ -142,6 +142,14 @@ class SnifferEngine(
      */
     val consumedMounts: StateFlow<Set<String>> = _consumedMounts.asStateFlow()
 
+    private val _unlockedPaddocks = MutableStateFlow<Map<Int, Boolean>>(emptyMap())
+    /**
+     * État verrouillé/déverrouillé des 6 enclos (indexé par numéro 1..6), poussé par le serveur à
+     * l'ouverture de l'écran d'élevage (`huf`). Seule source fiable du **nombre d'enclos débloqués**
+     * pour le planificateur de repro — [paddocks] ne connaît que les enclos déjà ouverts par le joueur.
+     */
+    val unlockedPaddocks: StateFlow<Map<Int, Boolean>> = _unlockedPaddocks.asStateFlow()
+
     /** Démarre le sniffer (non bloquant). */
     fun start() {
         log.info("Démarrage du sniffer")
@@ -257,6 +265,7 @@ class SnifferEngine(
                             _events.emit(SnifferEvent.GameMessage(selection.host, decoded, dynamic))
 
                             PaddockMapper.selectedPaddockIndex(decoded, dynamic)?.let { lastPaddockIndex = it }
+                            PaddockMapper.unlockedPaddocks(decoded, dynamic)?.let { _unlockedPaddocks.value = it }
 
                             PaddockMapper.stableMounts(decoded, dynamic)?.let { found ->
                                 _stableMounts.update { it + found }

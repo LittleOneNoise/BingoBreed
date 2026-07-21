@@ -39,6 +39,8 @@ object PaddockMapper {
     const val CODE_BREED = "htf"          // C→S : clic « Accoupler » (porte les 2 UUID parents, htf.fnbz/fncc)
     const val CODE_BREED_RESULT = "hqq"   // S→C : résultat d'accouplement (parents à jour + nouveau-né)
     const val CODE_CLONE_RESULT = "htb"   // S→C : monture obtenue par clonage (« dupliquer »)
+    const val CODE_PADDOCK_LIST = "huf"   // S→C : état verrouillé/déverrouillé des 6 enclos, event poussé à
+                                           // l'ouverture de l'écran d'élevage (déclenché par `htz`, requête vide)
 
     /**
      * Numéros de champ wire — UNIQUE point de resynchronisation après un patch. Noms **sémantiques**
@@ -76,6 +78,11 @@ object PaddockMapper {
         const val STABLE_WRAPPER = 1      // hrp.fmxg → hrn
         const val STABLE_MOUNTS_A = 1     // hrn.fmwz
         const val STABLE_MOUNTS_B = 3     // hrn.fmxb
+        // Liste des enclos : `huf`.fngx(2) map<int32,bool> (index 1..6 → déverrouillé). Confirmé en jeu
+        // (capture 2026-07 : 5 enclos à true, le 6ᵉ à false, cohérent avec le palier "tous les 40 niveaux
+        // d'éleveur"). `huf`.fngw(1) existe aussi (map<int32,bool>) mais sa sémantique n'est pas identifiée
+        // — non mappé pour l'instant.
+        const val PADDOCK_UNLOCKED = 2    // huf.fngx
         // Contenu d'enclos (huh)
         const val ACTIVE_ELEMENTS = 2     // huh.fnhh  rep hpo
         const val FUEL_GAUGES = 1         // huh.fnhg  rep hqg
@@ -195,6 +202,20 @@ object PaddockMapper {
         if (message.code != CODE_GAUGE_ON_RESP) return null
         val body = dynamic?.msg(F.GAUGE_RESP_BODY) ?: return emptyList()
         return body.enumList(F.GAUGE_RESP_ELEMENTS)
+    }
+
+    /**
+     * État verrouillé/déverrouillé des 6 enclos (`huf`), indexé par numéro d'enclos (1..6) →
+     * déverrouillé, ou null si ce n'est pas ce message. Seule source **fiable** du nombre d'enclos
+     * débloqués : [fromGameMessage]/[paddocks] ne connaissent que les enclos déjà **ouverts** par le
+     * joueur, ce qui sous-estime tant que tous les onglets n'ont pas été visités.
+     */
+    fun unlockedPaddocks(message: DecodedGameAny, dynamic: Message?): Map<Int, Boolean>? {
+        if (message.code != CODE_PADDOCK_LIST) return null
+        val msg = dynamic ?: return null
+        return msg.messageList(F.PADDOCK_UNLOCKED)
+            .associate { entry -> entry.int(F.MAP_KEY) to entry.bool(F.MAP_VALUE) }
+            .ifEmpty { null }
     }
 
     /** Montures de l'étable indexées par UUID, ou null si autre message / étable absente. */

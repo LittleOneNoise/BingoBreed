@@ -20,6 +20,15 @@ class MuldoRobesTest {
     }
 
     @Test
+    fun catalogMatchesTheKnownMuldoCensus() {
+        // Recensement officiel (spec) : 120 robes, réparties par génération 5/10/2/11/2/15/2/19/4/50.
+        assertEquals(120, MuldoRobes.ALL.size, "le catalogue muldo doit compter 120 robes")
+        val expectedByGen = mapOf(1 to 5, 2 to 10, 3 to 2, 4 to 11, 5 to 2, 6 to 15, 7 to 2, 8 to 19, 9 to 4, 10 to 50)
+        val actualByGen = MuldoRobes.ALL.groupingBy { it.gen }.eachCount()
+        assertEquals(expectedByGen, actualByGen, "répartition par génération inattendue")
+    }
+
+    @Test
     fun everyNonGen1RobeHasAValidRecipe() {
         MuldoRobes.ALL.filter { it.gen >= 2 }.forEach { robe ->
             val recipe = robe.recipe

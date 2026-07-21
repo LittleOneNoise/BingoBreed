@@ -187,6 +187,27 @@ class PaddockMapperTest {
     }
 
     @Test
+    fun `unlockedPaddocks lit la map index-deverrouille de huf`() {
+        // Échantillon réel (capture 2026-07) : enclos 1..5 déverrouillés, 6ᵉ verrouillé.
+        val huf = desc("huf")
+        val entry = huf.findFieldByNumber(2).messageType // map<int32, bool>
+        fun mapEntry(idx: Int, unlocked: Boolean) = DynamicMessage.newBuilder(entry)
+            .setField(entry.findFieldByNumber(1), idx)
+            .setField(entry.findFieldByNumber(2), unlocked)
+            .build()
+        val msg = DynamicMessage.newBuilder(huf).apply {
+            (1..5).forEach { addRepeatedField(huf.findFieldByNumber(2), mapEntry(it, true)) }
+            addRepeatedField(huf.findFieldByNumber(2), mapEntry(6, false))
+        }.build()
+        val decoded = DecodedGameAny(Direction.SERVER_TO_CLIENT, 1, null, "type.ankama.com/huf", ByteArray(0), "huf")
+        val result = PaddockMapper.unlockedPaddocks(decoded, msg)
+        assertEquals(mapOf(1 to true, 2 to true, 3 to true, 4 to true, 5 to true, 6 to false), result)
+        // Autre message : pas de liste d'enclos.
+        val other = DecodedGameAny(Direction.SERVER_TO_CLIENT, 1, null, "type.ankama.com/hqa", ByteArray(0), null)
+        assertEquals(null, PaddockMapper.unlockedPaddocks(other, msg))
+    }
+
+    @Test
     fun `derive la fertilite cote client`() {
         val maxed = listOf(MountGauge(0, 20000), MountGauge(1, 20000), MountGauge(2, 20000))
         val partial = listOf(MountGauge(0, 80), MountGauge(1, 20000), MountGauge(2, 0))

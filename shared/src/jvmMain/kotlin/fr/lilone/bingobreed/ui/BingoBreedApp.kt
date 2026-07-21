@@ -72,6 +72,7 @@ fun BingoBreedApp(engine: SnifferEngine) {
     val paddocks by engine.paddocks.collectAsState()
     val stable by engine.stableMounts.collectAsState()
     val consumed by engine.consumedMounts.collectAsState()
+    val unlockedPaddocks by engine.unlockedPaddocks.collectAsState()
     val achievements by engine.achievements.collectAsState()
     val versionCheck by engine.versionCheck.collectAsState()
     val lastGameFrameAt by engine.lastGameFrameAt.collectAsState()
@@ -97,7 +98,7 @@ fun BingoBreedApp(engine: SnifferEngine) {
                             Tab.ENCLOS -> EnclosScreen(paddock, now, lastGameFrameAt)
                             Tab.ETABLE -> EtableScreen(stable, now, lastGameFrameAt)
                             Tab.SUCCES -> SuccesScreen(achievements, now, lastGameFrameAt)
-                            Tab.REPRO -> ReproScreen(stable, paddocks, consumed, achievements, now, lastGameFrameAt)
+                            Tab.REPRO -> ReproScreen(stable, paddocks, consumed, achievements, unlockedPaddocks, now, lastGameFrameAt)
                             Tab.DEBUG -> DebugScreen(engine)
                         }
                         if (showSignalOverlay) SignalOverlay(signalAge)

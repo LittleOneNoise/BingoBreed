@@ -30,8 +30,10 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,6 +66,8 @@ import fr.lilone.bingobreed.sniffer.model.breeding.MuldoRobes
 import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
 import fr.lilone.bingobreed.sniffer.model.breeding.SerenityBand
 import fr.lilone.bingobreed.sniffer.model.breeding.Sex
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.DrawableResource
 
 /**
@@ -78,6 +82,7 @@ fun ReproScreen(
     paddocks: Map<Int?, Paddock>,
     consumed: Set<String>,
     achievements: Map<Int, Achievement>,
+    unlockedPaddocks: Map<Int, Boolean>,
     now: Long,
     lastGameFrameAt: Long?,
 ) {
@@ -95,17 +100,22 @@ fun ReproScreen(
     // Éléments actifs par enclos (clé = Paddock.id) : le « en cours » se juge enclos par enclos, donc
     // changer d'onglet d'enclos in-game ne réordonne plus les étapes.
     val activeByPaddock = remember(paddocks) { paddocks.values.associate { it.id to it.activeElements.toSet() } }
-    val plan = remember(remaining, stock, optimakina, activeByPaddock) {
-        ReproPlanner.plan(remaining, stock, optimakina, activeByPaddock)
-    }
+    val plan by rememberReproPlan(remaining, stock, optimakina, activeByPaddock)
     val total = MuldoRobes.ALL.size
+    // Nombre d'enclos débloqués : `unlockedPaddocks` (poussé par `huf` à l'ouverture de l'écran
+    // d'élevage) est la source fiable. Tant que ce message n'a pas été vu, on retombe sur le nombre
+    // d'enclos déjà ouverts par le joueur (sous-estimation possible, mais jamais 0 s'il a déjà ouvert
+    // un enclos) — purement indicatif pour le chip d'en-tête, aucune logique de plan n'en dépend.
+    val nbEnclos = remember(unlockedPaddocks, paddocks) {
+        unlockedPaddocks.count { it.value }.takeIf { unlockedPaddocks.isNotEmpty() } ?: paddocks.keys.count { it != null }
+    }
 
     val clipboard = LocalClipboardManager.current
     var showCalc by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             ReproHeader(
-                remaining.size, total, now, lastGameFrameAt,
+                remaining.size, total, nbEnclos, now, lastGameFrameAt,
                 onCopyState = { clipboard.setText(AnnotatedString(ReproDump.build(stable, paddocks, plan, remaining))) },
                 onShowCalc = { showCalc = true },
             )
@@ -127,6 +137,27 @@ fun ReproScreen(
         }
         if (showCalc) ReproCalcOverlay(plan, optimakina, onClose = { showCalc = false })
     }
+}
+
+/**
+ * Calcule le plan **hors du thread de composition** (`Dispatchers.Default`) plutôt qu'en ligne dans
+ * un `remember` : `ReproPlanner.plan` reste rapide aujourd'hui (arbre de 120 robes), mais
+ * [produceState] relance et **annule automatiquement** le calcul en cours dès qu'un paramètre change
+ * (nouvel état sniffer), ce qui évite qu'un calcul obsolète écrase un résultat plus récent en cas de
+ * recompositions rapprochées, et laisse de la marge si le planificateur se complexifie (recherche
+ * beam, ordonnancement de fournées…).
+ */
+@Composable
+private fun rememberReproPlan(
+    remaining: List<String>,
+    stock: OwnedStock,
+    optimakina: Boolean,
+    activeByPaddock: Map<Int?, Set<Int>>,
+): State<ReproPlan> = produceState(
+    initialValue = ReproPlan(emptyList(), emptyList(), remaining, fullSuccess = remaining.isEmpty()),
+    remaining, stock, optimakina, activeByPaddock,
+) {
+    value = withContext(Dispatchers.Default) { ReproPlanner.plan(remaining, stock, optimakina, activeByPaddock) }
 }
 
 /* ------------------------------------------------------------ Checklist (groupée par jauge) */
@@ -332,7 +363,7 @@ private fun JustBredRow(m: OwnedMount) {
 
 @Composable
 private fun ReproHeader(
-    remaining: Int, total: Int, now: Long, lastGameFrameAt: Long?,
+    remaining: Int, total: Int, nbEnclos: Int, now: Long, lastGameFrameAt: Long?,
     onCopyState: () -> Unit, onShowCalc: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -344,6 +375,14 @@ private fun ReproHeader(
         Spacer(Modifier.weight(1f))
         NetworkChip(now, lastGameFrameAt)
         Spacer(Modifier.width(12.dp))
+        if (nbEnclos > 0) {
+            Text(
+                "🚧 $nbEnclos enclos (${nbEnclos * 10} places)",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(12.dp))
+        }
         Text(
             "$remaining robes restantes / $total",
             style = MaterialTheme.typography.labelLarge,
