@@ -18,3 +18,4 @@ captures
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
 /logs/
+/shared/logs/sniffer.log
