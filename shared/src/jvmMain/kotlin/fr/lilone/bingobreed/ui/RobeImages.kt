@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Chargement (et cache mémoire) des **images de robe** bundlées en ressources
- * (`/muldo/<clé>.png`, cf. `tools/MuldoImageDownloader`). Clé = [MuldoRobes.imageKey] du nom de robe
+ * (`/muldo/<clé>.png`, cf. `tools/MountImageDownloader`). Clé = [MuldoRobes.imageKey] du nom de robe
  * canonique. Renvoie null si la robe n'a pas d'image bundlée → l'UI retombe sur la pastille couleur.
  */
 private val cache = ConcurrentHashMap<String, ImageBitmap>()
