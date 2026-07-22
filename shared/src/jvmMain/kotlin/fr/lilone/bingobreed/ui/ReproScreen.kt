@@ -210,7 +210,7 @@ private fun Checklist(plan: ReproPlan) {
 
     if (ready.isNotEmpty()) {
         gap()
-        StepSection("✅ Prêt maintenant", ready.size, BreedColors.feconde) {
+        StepSection("🏆 Croiser — valide un succès", ready.size, BreedColors.feconde) {
             ready.forEach { StepRow(it.action) }
         }
     }
@@ -238,7 +238,7 @@ private fun Checklist(plan: ReproPlan) {
     }
     if (otherPrep.isNotEmpty()) {
         gap()
-        StepSection("🛠 À préparer", otherPrep.size, MaterialTheme.colorScheme.primary) {
+        StepSection("🧬 Produire les parents manquants", otherPrep.size, MaterialTheme.colorScheme.primary) {
             otherPrep.forEach { StepRow(it.action) }
         }
     }
@@ -477,7 +477,7 @@ private fun ReproCalcOverlay(plan: ReproPlan, optimakina: Boolean, onClose: () -
 
                 if (crosses.isEmpty()) {
                     Text(
-                        "Aucun croisement concret proposé pour l'instant.\nReviens quand le coach affiche une étape « Prêt maintenant » ou un croisement intermédiaire.",
+                        "Aucun croisement concret proposé pour l'instant.\nReviens quand le coach affiche une étape « Croiser — valide un succès » ou un croisement intermédiaire.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
