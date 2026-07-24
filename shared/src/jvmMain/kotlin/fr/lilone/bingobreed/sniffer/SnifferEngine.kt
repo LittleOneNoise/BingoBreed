@@ -230,8 +230,10 @@ class SnifferEngine(
             runCatching {
                 listener.listen().collect { event ->
                     when (event) {
-                        is ConnectionEvent.Frame ->
+                        is ConnectionEvent.Frame -> {
+                            log.trace("[CONN] frame {}b", event.frame.size)
                             _events.emit(SnifferEvent.ConnectionFrame(event.frame))
+                        }
                         is ConnectionEvent.GameServer ->
                             onGameServerSelected(nif, event.selection)
                     }
@@ -253,6 +255,7 @@ class SnifferEngine(
                     val reassembler = TcpStreamReassembler(endpoints)
                     GameServerListener(capture, reassembler).listen().collect { frame ->
                         _lastGameFrameAt.value = System.currentTimeMillis()
+                        log.trace("[GAME {}] frame {}b", selection.host, frame.size)
                         _events.emit(SnifferEvent.GameFrame(selection.host, frame))
                         gameAnyExtractor.extract(frame, typeUrlRegistry)?.let { decoded ->
                             val dynamic = gameMessageDecoder.decode(decoded)
@@ -381,6 +384,7 @@ class SnifferEngine(
      * faire disparaître les autres enclos du planificateur de repro.
      */
     private fun setActivePaddock(paddock: Paddock) {
+        log.debug("[PADDOCK] enclos {} · {} monture(s)", paddock.id ?: "?", paddock.mounts.size)
         _activePaddock.value = paddock
         _paddocks.update { it + (paddock.id to paddock) }
     }

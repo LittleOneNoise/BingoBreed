@@ -32,6 +32,18 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "fr.lilone.bingobreed"
             packageVersion = version.toString()
+
+            // Modules JDK à garder dans le runtime jlink (liste donnée par
+            // `./gradlew :desktopApp:suggestRuntimeModules`). Sans eux le lanceur packagé sort en
+            // code 1 sans fenêtre : `java.net.http` porte le HttpClient de DofusConfigProvider et
+            // `jdk.unsupported` le sun.misc.Unsafe dont dépendent JNA (pcap4j) et protobuf.
+            modules("java.instrument", "java.naming", "java.net.http", "java.sql", "jdk.unsupported")
+
+            // Icônes de distribution : un format natif par OS, tous dérivés du même master
+            // (cf. icons/generate-icons.ps1). L'icône de la *fenêtre* est posée à part dans main.kt.
+            windows { iconFile.set(project.file("icons/bingobreed.ico")) }
+            macOS { iconFile.set(project.file("icons/bingobreed.icns")) }
+            linux { iconFile.set(project.file("icons/bingobreed.png")) }
         }
     }
 }

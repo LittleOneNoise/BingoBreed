@@ -1,11 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
+    <!--
+        Console et fichier restent au seuil DEBUG : seul le miroir UI (onglet Debug) voit le TRACE,
+        qui porte les frames réseau brutes — illisible dans un terminal, utile dans une vue filtrable.
+    -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>DEBUG</level>
+        </filter>
         <encoder>
             <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{24} - %msg%n</pattern>
         </encoder>
     </appender>
+
+    <!-- Miroir en mémoire consommé par l'onglet Debug (cf. fr.lilone.bingobreed.log.LogMirror). -->
+    <appender name="UI" class="fr.lilone.bingobreed.log.LogMirrorAppender"/>
 
     <!--
         Racine des logs : propriété système `bingobreed.projectDir`, injectée par
@@ -13,6 +23,9 @@
         ex. lancement direct hors Gradle — reste "interne au projet" tant qu'on lance depuis la racine.
     -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>DEBUG</level>
+        </filter>
         <file>${bingobreed.projectDir:-.}/logs/sniffer.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <fileNamePattern>${bingobreed.projectDir:-.}/logs/sniffer.%d{yyyy-MM-dd}.log</fileNamePattern>
@@ -23,14 +36,15 @@
         </encoder>
     </appender>
 
-    <!-- Notre code -->
-    <logger name="fr.lilone.bingobreed" level="DEBUG"/>
+    <!-- Notre code : TRACE émis, filtré à DEBUG par les appenders console/fichier (voir plus haut) -->
+    <logger name="fr.lilone.bingobreed" level="TRACE"/>
     <!-- pcap4j est bavard : on le limite -->
     <logger name="org.pcap4j" level="WARN"/>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
+        <appender-ref ref="UI"/>
     </root>
 
 </configuration>

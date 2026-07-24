@@ -5,6 +5,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import fr.lilone.bingobreed.sniffer.SnifferEngine
 import fr.lilone.bingobreed.sniffer.diagnostics.CodeCensus
@@ -76,6 +77,9 @@ fun main() {
             },
             state = windowState,
             title = "BingoBreed",
+            // Barre de titre + barre des tâches. L'icône embarquée dans l'exe/le bundle vient
+            // séparément de `nativeDistributions` (cf. build.gradle.kts).
+            icon = painterResource("icon.png"),
         ) {
             BingoBreedApp(sniffer)
         }

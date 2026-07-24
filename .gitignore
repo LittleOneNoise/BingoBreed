@@ -18,4 +18,6 @@ captures
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
 /logs/
-/shared/logs/sniffer.log
+/shared/logs/
+# Dossier de logs parasite créé par le binaire packagé (projectDir mal résolu, cf. README)
+/GithubBingoBreed/

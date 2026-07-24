@@ -99,7 +99,7 @@ fun BingoBreedApp(engine: SnifferEngine) {
                             Tab.ETABLE -> EtableScreen(stable, now, lastGameFrameAt)
                             Tab.SUCCES -> SuccesScreen(achievements, now, lastGameFrameAt)
                             Tab.REPRO -> ReproScreen(stable, paddocks, consumed, achievements, unlockedPaddocks, now, lastGameFrameAt)
-                            Tab.DEBUG -> DebugScreen(engine)
+                            Tab.DEBUG -> DebugScreen()
                         }
                         if (showSignalOverlay) SignalOverlay(signalAge)
                     }
