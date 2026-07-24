@@ -45,8 +45,8 @@ machines (ou deux runners CI).
 Produit un dossier autonome (~140 Mo, runtime Java inclus) :
 
 ```
-desktopApp\build\compose\binaries\main\app\fr.lilone.bingobreed\
-    fr.lilone.bingobreed.exe     ← le lanceur, avec l'icône embarquée
+desktopApp\build\compose\binaries\main\app\bingobreed\
+    bingobreed.exe                ← le lanceur, avec l'icône embarquée
     app\                          ← jars + ressources
     runtime\                      ← JRE embarqué
 ```
@@ -66,7 +66,7 @@ Pour un installeur MSI à la place :
 .\gradlew.bat :desktopApp:packageMsi
 ```
 
-→ `desktopApp\build\compose\binaries\main\msi\fr.lilone.bingobreed-<version>.msi`
+→ `desktopApp\build\compose\binaries\main\msi\bingobreed-<version>.msi`
 
 Le plugin Compose télécharge WiX tout seul au premier build (tâche `unzipWix`) — il faut donc une
 connexion réseau, mais rien à installer à la main.
@@ -85,8 +85,8 @@ connexion réseau, mais rien à installer à la main.
 ./gradlew :desktopApp:packageDmg            # image disque
 ```
 
-→ `desktopApp/build/compose/binaries/main/app/fr.lilone.bingobreed.app`
-→ `desktopApp/build/compose/binaries/main/dmg/fr.lilone.bingobreed-<version>.dmg`
+→ `desktopApp/build/compose/binaries/main/app/bingobreed.app`
+→ `desktopApp/build/compose/binaries/main/dmg/bingobreed-<version>.dmg`
 
 `jpackage` produit un binaire pour **l'architecture de la machine de build** : construire sur Apple
 Silicon donne un bundle arm64, sur Intel un bundle x86_64.
@@ -95,7 +95,7 @@ Le bundle n'est ni signé ni notarisé : Gatekeeper le bloquera au premier lance
 mise en quarantaine à la main —
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/fr.lilone.bingobreed.app
+xattr -dr com.apple.quarantine /Applications/bingobreed.app
 ```
 
 — soit on renseigne un certificat Developer ID via le bloc `macOS { signing { … } }` de

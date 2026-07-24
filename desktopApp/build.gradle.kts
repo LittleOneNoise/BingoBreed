@@ -30,7 +30,9 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "fr.lilone.bingobreed"
+            // Nom du lanceur (bingobreed.exe), du dossier d'install, du MSI, du bundle .app et du
+            // paquet .deb. L'identifiant technique reverse-DNS reste porté par le bundleID macOS.
+            packageName = "bingobreed"
             packageVersion = version.toString()
 
             // Modules JDK à garder dans le runtime jlink (liste donnée par
@@ -42,7 +44,10 @@ compose.desktop {
             // Icônes de distribution : un format natif par OS, tous dérivés du même master
             // (cf. icons/generate-icons.ps1). L'icône de la *fenêtre* est posée à part dans main.kt.
             windows { iconFile.set(project.file("icons/bingobreed.ico")) }
-            macOS { iconFile.set(project.file("icons/bingobreed.icns")) }
+            macOS {
+                iconFile.set(project.file("icons/bingobreed.icns"))
+                bundleID = "fr.lilone.bingobreed"
+            }
             linux { iconFile.set(project.file("icons/bingobreed.png")) }
         }
     }
