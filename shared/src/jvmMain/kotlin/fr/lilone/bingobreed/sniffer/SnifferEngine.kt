@@ -1,5 +1,6 @@
 package fr.lilone.bingobreed.sniffer
 
+import fr.lilone.bingobreed.breeding.ReproTargets
 import fr.lilone.bingobreed.sniffer.capture.PacketCaptureFactory
 import fr.lilone.bingobreed.sniffer.capture.TcpStreamReassembler
 import fr.lilone.bingobreed.sniffer.config.DofusConfigProvider
@@ -12,6 +13,7 @@ import fr.lilone.bingobreed.sniffer.model.VersionCheck
 import fr.lilone.bingobreed.sniffer.model.breeding.Achievement
 import fr.lilone.bingobreed.sniffer.model.breeding.Fertility
 import fr.lilone.bingobreed.sniffer.model.breeding.Mount
+import fr.lilone.bingobreed.sniffer.model.breeding.MuldoRobes
 import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
 import fr.lilone.bingobreed.sniffer.parser.breeding.AchievementMapper
 import fr.lilone.bingobreed.sniffer.parser.breeding.PaddockMapper
@@ -35,9 +37,12 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.pcap4j.core.PcapNetworkInterface
@@ -91,8 +96,8 @@ class SnifferEngine(
 
     private val _paddocks = MutableStateFlow<Map<Int?, Paddock>>(emptyMap())
     /**
-     * **Tous** les enclos vus au moins une fois, indexés par leur index `hkv` (`id`). Le jeu ne pousse
-     * l'état (`him`) que de l'enclos **ouvert** ; cette carte mémorise les autres pour que le
+     * **Tous** les enclos vus au moins une fois, indexés par leur index `hrw` (`id`). Le jeu ne pousse
+     * l'état (`hrp`) que de l'enclos **ouvert** ; cette carte mémorise les autres pour que le
      * planificateur de repro reste **stable** quand on change d'onglet d'enclos in-game (sinon les
      * montures de l'enclos quitté perdraient leur localisation et leurs montées « en cours »). Mis à
      * jour en miroir de [activePaddock] à chaque (re)lecture/mutation d'enclos.
@@ -109,33 +114,47 @@ class SnifferEngine(
     /** Listeners de jeu actifs, indexés par host pour éviter les doublons. */
     private val gameJobs = ConcurrentHashMap<String, Job>()
 
-    /** Dernier index d'enclos sélectionné (requête `hkv`) — le contenu `him` ne le porte pas. */
+    /** Dernier index d'enclos sélectionné (requête `hrw`) — le contenu `hrp` ne le porte pas. */
     @Volatile
     private var lastPaddockIndex: Int? = null
 
-    /** Dernière catégorie de succès demandée (requête `lfc`) — la réponse `lfd` ne la porte pas. */
+    /** Dernière catégorie de succès demandée (requête `mgi`) — la réponse `mfn` ne la porte pas. */
     @Volatile
     private var lastAchievementCategory: Int? = null
 
-    private val _achievements = MutableStateFlow<Map<Int, Achievement>>(emptyMap())
+    private val _networkAchievements = MutableStateFlow<Map<Int, Achievement>>(emptyMap())
+
+    private val _localObjectives = MutableStateFlow<Set<Int>>(emptySet())
     /**
-     * Succès vus passer, indexés par id (alimenté par les listes détaillées `lfd`, rattachées à la
-     * catégorie de la dernière requête `lfc`). Exposé à l'UI (onglet Succès).
+     * Objectifs de succès validés **côté client** faute de push serveur : le jeu ne renvoie pas la liste
+     * des succès quand une naissance en complète un, il faut rouvrir la catégorie en jeu. Sans ça le
+     * planificateur de repro re-viserait indéfiniment une robe déjà obtenue. Alimenté par
+     * [registerBirths] (accouplement `huu`), fusionné dans [achievements].
      */
-    val achievements: StateFlow<Map<Int, Achievement>> = _achievements.asStateFlow()
+    val locallyValidatedObjectives: StateFlow<Set<Int>> = _localObjectives.asStateFlow()
+
+    /**
+     * Succès vus passer, indexés par id (alimenté par les listes détaillées `mfn`, rattachées à la
+     * catégorie de la dernière requête `mgi`, et par la vue d'ensemble `mfo`), **surchargés** des
+     * validations locales issues des naissances. Exposé à l'UI (onglet Succès) et au planificateur.
+     */
+    val achievements: StateFlow<Map<Int, Achievement>> =
+        combine(_networkAchievements, _localObjectives) { network, local ->
+            if (local.isEmpty()) network else network.mapValues { (_, a) -> a.withLocalValidations(local) }
+        }.stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
     private val _stableMounts = MutableStateFlow<Map<String, Mount>>(emptyMap())
     /**
-     * Registre des montures connues de l'**étable** (collection complète `hrp`, montures sorties de
-     * l'enclos, nouveau-nés `hqq` et clones `htb`), exposé à l'UI (onglet Étable) et utilisé pour
-     * réinjecter les données d'une monture qui (re)entre dans l'enclos via un transfert `hqv`/`hsw`
-     * (qui ne porte que l'UUID).
+     * Registre des montures connues de l'**étable** (collection complète `htg`, montures sorties de
+     * l'enclos, nouveau-nés `huu`, clones `hvm` et retours d'inventaire `hrk`), exposé à l'UI (onglet
+     * Étable) et utilisé pour réinjecter les données d'une monture qui (re)entre dans l'enclos via un
+     * transfert `hub` (qui ne porte que l'UUID).
      */
     val stableMounts: StateFlow<Map<String, Mount>> = _stableMounts.asStateFlow()
 
     private val _consumedMounts = MutableStateFlow<Set<String>>(emptySet())
     /**
-     * UUIDs des montures **fraîchement accouplées** (clic « Accoupler » `htq`), donc plus fécondes
+     * UUIDs des montures **fraîchement accouplées** (clic « Accoupler » `hsp`), donc plus fécondes
      * même si l'état encore en cache les montre à 20000. Le planificateur de repro les exclut pour ne
      * pas rester fixé dessus. Purgé dès qu'un état **frais non-fécond** arrive pour la monture
      * (jauges remises à zéro côté jeu) — cf. [clearConsumedFrom].
@@ -145,7 +164,7 @@ class SnifferEngine(
     private val _unlockedPaddocks = MutableStateFlow<Map<Int, Boolean>>(emptyMap())
     /**
      * État verrouillé/déverrouillé des 6 enclos (indexé par numéro 1..6), poussé par le serveur à
-     * l'ouverture de l'écran d'élevage (`huf`). Seule source fiable du **nombre d'enclos débloqués**
+     * l'ouverture de l'écran d'élevage (`hsk`). Seule source fiable du **nombre d'enclos débloqués**
      * pour le planificateur de repro — [paddocks] ne connaît que les enclos déjà ouverts par le joueur.
      */
     val unlockedPaddocks: StateFlow<Map<Int, Boolean>> = _unlockedPaddocks.asStateFlow()
@@ -275,14 +294,17 @@ class SnifferEngine(
                                 clearConsumedFrom(found)
                             }
 
-                            // Accouplement (`htf`) : les 2 parents sont consommés → exclus du planner.
+                            // Accouplement (`hsp`) : les 2 parents sont consommés → exclus du planner.
                             PaddockMapper.bredPair(decoded, dynamic)?.let { ids ->
                                 _consumedMounts.update { it + ids }
                             }
-                            // Résultat d'accouplement (`hqq`) / clonage (`htb`) : enregistre le nouveau-né
-                            // et l'état à jour des parents dans l'étable (le push complet `hrp` n'arrive
+                            // Résultat d'accouplement (`huu`) / clonage (`hvm`) : enregistre le nouveau-né
+                            // et l'état à jour des parents dans l'étable (le push complet `htg` n'arrive
                             // qu'à la 1ʳᵉ ouverture de l'élevage).
-                            PaddockMapper.bredOffspring(decoded, dynamic)?.let { _stableMounts.update { s -> s + it } }
+                            PaddockMapper.bredOffspring(decoded, dynamic)?.let { outcome ->
+                                _stableMounts.update { it + outcome.all }
+                                registerBirths(outcome.newborns.values)
+                            }
                             PaddockMapper.clonedMount(decoded, dynamic)?.let { found ->
                                 _stableMounts.update { it + found }
                                 clearConsumedFrom(found)
@@ -290,11 +312,11 @@ class SnifferEngine(
 
                             AchievementMapper.requestedCategory(decoded, dynamic)?.let { lastAchievementCategory = it }
                             AchievementMapper.detailedAchievements(decoded, dynamic, lastAchievementCategory)?.let { list ->
-                                _achievements.update { it + list.associateBy(Achievement::id) }
+                                _networkAchievements.update { it + list.associateBy(Achievement::id) }
                             }
-                            // Liste générale `mdz` (vue d'ensemble à l'ouverture des succès) — complète l'index.
+                            // Liste générale `mfo` (vue d'ensemble à l'ouverture des succès) — complète l'index.
                             AchievementMapper.listedAchievements(decoded, dynamic)?.let { list ->
-                                _achievements.update { it + list.associateBy(Achievement::id) }
+                                _networkAchievements.update { it + list.associateBy(Achievement::id) }
                             }
 
                             PaddockMapper.fromGameMessage(decoded, dynamic)?.let { paddock ->
@@ -306,6 +328,17 @@ class SnifferEngine(
 
                             PaddockMapper.transferredMountIds(decoded, dynamic)?.let { ids ->
                                 applyMountTransfer(selection.host, ids)
+                            }
+
+                            // Enclos ↔ inventaire (certificat). Sortie (`hul`) : la monture quitte le
+                            // cheptel exploitable. Retour (`hrk`) : elle revient **complète**.
+                            PaddockMapper.mountsFromInventory(decoded, dynamic)?.let { found ->
+                                _stableMounts.update { it + found }
+                                clearConsumedFrom(found)
+                                applyMountsEnteringPaddock(selection.host, found)
+                            }
+                            PaddockMapper.mountsToInventory(decoded, dynamic)?.let { ids ->
+                                applyMountsToInventory(selection.host, ids)
                             }
 
                             PaddockMapper.activatedElement(decoded, dynamic)?.let { el ->
@@ -331,7 +364,50 @@ class SnifferEngine(
     }
 
     /**
-     * Applique un transfert de montures (`hif`) à l'enclos actif **en live**, sans attendre le
+     * Valide **côté client** les objectifs de succès complétés par ces naissances. Le serveur ne
+     * repousse ni `mfn` ni `mfo` après un accouplement : sans ça, une robe fraîchement obtenue resterait
+     * « à faire » jusqu'à ce que le joueur rouvre la catégorie en jeu, et le planificateur continuerait à
+     * la viser — biais qui s'accumule sur la durée. Sans effet si la robe n'a pas d'objectif connu ou si
+     * l'objectif est déjà validé.
+     */
+    private fun registerBirths(newborns: Collection<Mount>) {
+        val objectives = newborns.mapNotNull { m ->
+            val robe = MuldoRobes.BY_ID[m.appearanceId]?.name ?: return@mapNotNull null
+            val objective = ReproTargets.objectiveIdOfRobe(robe) ?: return@mapNotNull null
+            log.info("[NAISSANCE] robe « {} » → objectif {} validé côté BingoBreed", robe, objective)
+            objective
+        }.toSet()
+        if (objectives.isNotEmpty()) _localObjectives.update { it + objectives }
+    }
+
+    /**
+     * Une monture **sort vers l'inventaire** (mise en certificat, `hul`) : elle quitte l'enclos **et**
+     * le registre étable — ce n'est plus une monture mais un objet, elle ne doit plus compter dans le
+     * cheptel du planificateur.
+     */
+    private suspend fun applyMountsToInventory(host: String, ids: Set<String>) {
+        _stableMounts.update { it - ids }
+        _consumedMounts.update { it - ids }
+        val current = _activePaddock.value ?: return
+        if (current.mounts.keys.none { it in ids }) return
+        val updated = current.copy(mounts = current.mounts - ids)
+        setActivePaddock(updated)
+        _events.emit(SnifferEvent.PaddockUpdated(host, updated))
+    }
+
+    /**
+     * Des montures **entrent dans l'enclos actif** avec leur état complet (retour d'inventaire `hrk`) :
+     * on les insère directement, sans attendre le prochain push d'enclos.
+     */
+    private suspend fun applyMountsEnteringPaddock(host: String, mounts: Map<String, Mount>) {
+        val current = _activePaddock.value ?: return
+        val updated = current.copy(mounts = current.mounts + mounts)
+        setActivePaddock(updated)
+        _events.emit(SnifferEvent.PaddockUpdated(host, updated))
+    }
+
+    /**
+     * Applique un transfert de montures (`hub`) à l'enclos actif **en live**, sans attendre le
      * prochain push complet : on déduit le sens par l'état courant — UUID présent dans l'enclos
      * → il en sort (retiré, mémorisé dans l'étable) ; sinon → il y entre (réinjecté depuis le
      * registre étable si connu).
@@ -392,8 +468,8 @@ class SnifferEngine(
     /**
      * Purge de l'ensemble « consommées » les montures pour lesquelles un état **frais non-fécond**
      * vient d'arriver (jauges remises à zéro après l'accouplement) : la marque optimiste posée par
-     * `htq` n'a plus lieu d'être, l'état réel prend le relais. Une monture qui resterait fécond dans
-     * les pushs (cache 20000) reste consommée — on fait confiance à `htq`.
+     * `hsp` n'a plus lieu d'être, l'état réel prend le relais. Une monture qui resterait fécond dans
+     * les pushs (cache 20000) reste consommée — on fait confiance à `hsp`.
      */
     private fun clearConsumedFrom(mounts: Map<String, Mount>) {
         if (_consumedMounts.value.isEmpty()) return

@@ -32,6 +32,34 @@ class ReproTargetsTest {
     }
 
     @Test
+    fun objectiveIdOfRobeIsTheInverseOfTheObjectiveLabel() {
+        assertEquals(4610, ReproTargets.objectiveIdOfRobe("Ébène"))
+        assertEquals(4628, ReproTargets.objectiveIdOfRobe("Roux"))
+        // Les objectifs Volkorne portent les mêmes noms courts : ils ne doivent pas polluer l'index.
+        assertEquals(null, ReproTargets.objectiveIdOfRobe("Jade"))
+    }
+
+    /**
+     * Une naissance valide l'objectif **côté client** : le serveur ne repousse pas la liste des succès,
+     * donc sans ça la robe resterait dans `remaining` et le planificateur continuerait à la viser.
+     */
+    @Test
+    fun localValidationRemovesTheRobeFromRemaining() {
+        val ach = muldoAchievement(done(4610), inProgress(4628))
+        assertTrue("Roux" in ReproTargets.remainingMuldoRobes(ach))
+
+        val objective = ReproTargets.objectiveIdOfRobe("Roux")!!
+        val patched = ach.mapValues { (_, a) -> a.withLocalValidations(setOf(objective)) }
+        assertTrue("Roux" in ReproTargets.validatedMuldoRobes(patched))
+        assertFalse("Roux" in ReproTargets.remainingMuldoRobes(patched))
+        // La progression réseau est conservée : seul le flag local marque l'objectif comme terminé.
+        val o = patched.getValue(1490).objectives.first { it.id == objective }
+        assertEquals(3L, o.current)
+        assertTrue(o.locallyValidated)
+        assertTrue(o.completed)
+    }
+
+    @Test
     fun remainingExcludesValidatedAndIsSortedByGen() {
         val ach = muldoAchievement(done(4610), inProgress(4628))
         val remaining = ReproTargets.remainingMuldoRobes(ach)

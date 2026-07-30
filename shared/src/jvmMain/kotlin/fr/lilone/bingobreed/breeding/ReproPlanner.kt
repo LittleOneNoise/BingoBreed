@@ -33,7 +33,7 @@ object ReproPlanner {
      * sont prêts. Les **captures** ne sont émises que pour les cibles **proches** ([captureHorizon]) pour
      * ne pas plonger trop loin dans l'arbre. Tout est dédupliqué et classé par [StepStatus].
      *
-     * [activeElementsByPaddock] = éléments de jauge actifs (ordinaux hhc) **par index d'enclos** (clé =
+     * [activeElementsByPaddock] = éléments de jauge actifs (ordinaux `hqt`) **par index d'enclos** (clé =
      * `Paddock.id`, nullable). Une montée est jugée « en cours » contre les éléments de **l'enclos où se
      * trouve la monture**, pas contre l'onglet d'enclos actuellement ouvert — ainsi changer d'onglet
      * in-game ne déplace pas les étapes.
@@ -167,10 +167,10 @@ object ReproPlanner {
         is NextAction.Capture -> 4
     }
 
-    /** Éléments d'enclos (ordinaux hhc) qui agissent sur la **sérénité** (pas une jauge de monture). */
+    /** Éléments d'enclos (ordinaux `hqt`) qui agissent sur la **sérénité** (pas une jauge de monture). */
     private val SERENITY_ELEMENTS = setOf(0, 1) // 0 = baffeur (baisse), 1 = caresseur (monte)
 
-    /** Élément de jauge d'enclos (ordinal hhc) → type de jauge monture monté, ou null (sérénité/inconnu). */
+    /** Élément de jauge d'enclos (ordinal `hqt`) → type de jauge monture monté, ou null (sérénité/inconnu). */
     private fun fuelElementToGauge(el: Int): Int? = when (el) {
         2 -> MountGauge.TYPE_ENDURANCE // foudroyeur
         3 -> MountGauge.TYPE_MATURITY  // abreuvoir

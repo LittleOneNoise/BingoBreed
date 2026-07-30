@@ -8,7 +8,7 @@ package fr.lilone.bingobreed.sniffer.model.breeding
  * ⚠️ FICHIER GÉNÉRÉ depuis le dump DofusDB — ne pas éditer à la main.
  *
  * Deux espaces d'ids distincts : [NAMES]/[DESCRIPTIONS]/[POINTS]/[CATEGORY]/[CHILDREN] indexent
- * les **succès** (champ réseau `ftht`), [OBJECTIVES] indexe les **objectifs** (champ `fthp`).
+ * les **succès** (champ réseau `mgc.gfsm`), [OBJECTIVES] indexe les **objectifs** (champ `mga.gfsi`).
  */
 object AchievementRegistry {
 
@@ -18,6 +18,13 @@ object AchievementRegistry {
     fun category(achievementId: Int): AchievementCategory? = CATEGORY[achievementId]
     fun children(achievementId: Int): List<Int> = CHILDREN[achievementId] ?: emptyList()
     fun objectiveText(objectiveId: Int): String? = OBJECTIVES[objectiveId]
+
+    /**
+     * Tous les objectifs connus (id → libellé), pour construire des **index inverses** libellé → id
+     * (cf. [fr.lilone.bingobreed.breeding.ReproTargets]). Les libellés sont préfixés par la famille
+     * (« Muldo … », « Volkorne … ») : indispensable, les noms courts de robe se répètent entre familles.
+     */
+    val ALL_OBJECTIVES: Map<Int, String> get() = OBJECTIVES
 
     private val NAMES: Map<Int, String> = mapOf(
         91 to "L'éleveur c'est moi",

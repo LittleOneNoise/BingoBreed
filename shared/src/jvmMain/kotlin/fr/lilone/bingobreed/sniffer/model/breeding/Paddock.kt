@@ -9,15 +9,15 @@ package fr.lilone.bingobreed.sniffer.model.breeding
 
 /** Un enclos (paddock) : ses jauges de carburant et les montures qu'il contient. */
 data class Paddock(
-    /** Éléments des jauges actuellement activées (max 2). Ordinaux de l'enum hhc. */
+    /** Éléments des jauges actuellement activées (max 2). Ordinaux de l'enum `hqt`. */
     val activeElements: List<Int>,
     /** Les 6 jauges de carburant. */
     val fuelGauges: List<FuelGauge>,
     /** Montures présentes, indexées par UUID. */
     val mounts: Map<String, Mount>,
     /**
-     * Index de l'enclos (1..6), issu de la **dernière requête de sélection `hkv`**
-     * (le contenu `him` ne le transporte pas). Null tant qu'aucune sélection n'a été vue.
+     * Index de l'enclos (1..6), issu de la **dernière requête de sélection `hrw`**
+     * (le contenu `hrp` ne le transporte pas). Null tant qu'aucune sélection n'a été vue.
      */
     val id: Int? = null,
 )
@@ -25,8 +25,10 @@ data class Paddock(
 /** Une jauge de carburant d'enclos (0..100000). */
 data class FuelGauge(
     /**
-     * Ordinal de l'item de carburant (enum hhc, 0..5), dans l'ordre :
+     * Ordinal de l'item de carburant (enum `hqt`, 0..5), dans l'ordre :
      * 0 = baffeur, 1 = caresseur, 2 = foudroyeur, 3 = abreuvoir, 4 = dragofesse, 5 = mangeoire.
+     * Confirmé au patch 2026-07-30 : activer la sérénité négative envoie l'élément 0 (baffeur) et le
+     * serveur répond en désactivant l'élément 1 (caresseur, sérénité positive).
      */
     val element: Int,
     /** Valeur de remplissage (0..100000). */
@@ -34,10 +36,8 @@ data class FuelGauge(
 )
 
 /**
- * Une monture telle que vue dans le résumé d'enclos (`hlo`).
+ * Une monture telle que vue dans le résumé d'enclos / d'étable (message `hvf`).
  *
- * Note : **génération et généalogie** ne figurent PAS dans ce résumé — elles
- * proviennent d'un message de détail (au clic sur la monture), à identifier.
  * Voir `parser/breeding/README.md` pour le mapping wire et la ré-identification
  * (les noms de champ obfusqués changent à chaque patch).
  */
@@ -53,17 +53,17 @@ data class Mount(
     val serenity: Int,
     /** Sexe (confirmé). */
     val sex: Sex,
-    /** True si la monture est stérile (confirmé). */
+    /** True si la monture est stérile (champ `hvf.fomt`, confirmé). */
     val sterile: Boolean,
     /** État de fertilité — **dérivé client** de [sterile] + [gauges] (pas un champ réseau). */
     val fertility: Fertility,
     /** Id d'apparence/robe (observé ; sémantique exacte à confirmer). */
     val appearanceId: Int,
     /**
-     * **Généalogie** : robes des 2 parents (sous-message `feap`, champ 7 ; `feac`=parent 1,
-     * `fead`=parent 2). Mêmes ids que [appearanceId] : **espace de robes commun** (cf.
-     * `Robes.IDS`). Déjà présent dans le résumé d'enclos (sans paquet réseau supplémentaire).
-     * Liste vide si la monture n'a pas de généalogie (robe de base / parents inconnus).
+     * **Généalogie** : robes des 2 parents (sous-message `hvd`). Mêmes ids que [appearanceId] :
+     * **espace de robes commun** (cf. `Robes.IDS`). Déjà présent dans le résumé d'enclos (sans paquet
+     * réseau supplémentaire). Liste vide si la monture n'a pas de généalogie (robe de base / parents
+     * inconnus).
      */
     val parents: List<Int>,
     /** Jauges amour/maturité/endurance. */
@@ -72,7 +72,7 @@ data class Mount(
     val effects: List<MountEffect>,
 )
 
-/** Sexe d'une monture (champ wire `feau` : true = mâle). */
+/** Sexe d'une monture (champ wire `hvf.fonc` : true = mâle). */
 enum class Sex { MALE, FEMALE }
 
 /**
@@ -101,7 +101,7 @@ enum class Fertility {
 
 /** Une jauge de monture. */
 data class MountGauge(
-    /** Ordinal du type (enum hhd) : 0 = amour, 1 = maturité, 2 = endurance. */
+    /** Ordinal du type (enum `hqu`) : 0 = amour, 1 = maturité, 2 = endurance. */
     val type: Int,
     val value: Int,
 ) {
@@ -114,8 +114,8 @@ data class MountGauge(
 
 /** Un effet de monture : id d'effet + valeur (ex. 138=Puissance, 128=PM). */
 data class MountEffect(
-    /** Id d'effet Dofus (champ fppp). */
+    /** Id d'effet Dofus (champ `ldn.gbce`). */
     val effectId: Int,
-    /** Valeur simple si l'effet en a une (champ fpps), sinon null (effet complexe). */
+    /** Valeur simple si l'effet en a une (champ `ldn.gbcn`), sinon null (effet complexe). */
     val value: Int?,
 )

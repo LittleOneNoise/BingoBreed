@@ -8,38 +8,36 @@ import fr.lilone.bingobreed.sniffer.model.breeding.AchievementObjective
 
 /**
  * Transforme les messages de succès en [Achievement].
- *  - `meu` (C→S) : requête de détail d'une catégorie — porte l'**id de catégorie**.
- *  - `mey` (S→C) : liste détaillée des succès de la **dernière catégorie demandée**.
- *  - `mff` (S→C) : liste générale (succès presque terminés / en cours), non catégorisée.
+ *  - `mgi` (C→S) : requête de détail d'une catégorie — porte l'**id de catégorie**.
+ *  - `mfn` (S→C) : liste détaillée des succès de la **dernière catégorie demandée**.
+ *  - `mfo` (S→C) : liste générale (succès presque terminés / en cours), non catégorisée.
  *
  * ⚠️ **Couche fragile au patch** (cf. [PaddockMapper]) : les numéros de champ ([F]) viennent
  * d'`output.proto` et sont le seul point à resynchroniser après une MAJ Dofus.
- * Resynchronisé au patch 2026-07 (client 3.6.6.6).
+ * Resynchronisé au patch **2026-07-30**.
  */
 object AchievementMapper {
 
-    const val CODE_CATEGORY_REQ = "meu" // C→S : requête détail catégorie (porte l'id, meu.gfpd)
-    const val CODE_DETAILED = "mey"     // S→C : liste détaillée d'une catégorie
-    const val CODE_LIST = "mff"         // S→C : liste générale (en cours)
+    const val CODE_CATEGORY_REQ = "mgi" // C→S : requête détail catégorie (porte l'id, mgi.gftl)
+    const val CODE_DETAILED = "mfn"     // S→C : liste détaillée d'une catégorie
+    const val CODE_LIST = "mfo"         // S→C : liste générale (en cours)
 
     /**
      * Numéros de champ wire — UNIQUE point de resynchronisation. Noms **sémantiques** stables ; ne
-     * mettre à jour que la **valeur** + le commentaire d'identité (`message.champ`). Patch 2026-07.
+     * mettre à jour que la **valeur** + le commentaire d'identité (`message.champ`). Patch 2026-07-30.
      */
     private object F {
-        const val REQUEST_CATEGORY = 1   // meu.gfpd (id de catégorie demandée ; 78/79/80 = dragodinde/muldo/
-                                         // volkorne, 119 = élevage général — capture 2026-07)
-        // Liste détaillée : `mey` a deux listes `mfi` — les deux sont lues
-        const val DETAILED_LIST_A = 1    // mey.gfpq  rep mfi
-        const val DETAILED_LIST_B = 2    // mey.gfpr  rep mfi
-        const val OVERVIEW_LIST = 1      // mff.gfqx  rep mfi (vue d'ensemble)
-        // Succès (mfi)
-        const val ACH_ID = 2             // mfi.gfrj
-        const val ACH_OBJECTIVES = 1     // mfi.gfri  rep mfg
-        // Objectif (mfg)
-        const val OBJ_ID = 1             // mfg.gfrb
-        const val OBJ_CURRENT = 2        // mfg.gfrc (optional ; absent = terminé)
-        const val OBJ_TARGET = 3         // mfg.gfre (cible)
+        const val REQUEST_CATEGORY = 1   // mgi.gftl (id de catégorie demandée ; 78/79/80 = dragodinde/muldo/
+                                         // volkorne, 119 = élevage général — capture 2026-07-30)
+        const val DETAILED_LIST = 2      // mfn.gfqk  rep mgc (gfqj(1) = mfl, en-tête de catégorie)
+        const val OVERVIEW_LIST = 1      // mfo.gfqo  rep mgc (vue d'ensemble)
+        // Succès (mgc) — gfsn(2), `optional int32`, reste non identifié
+        const val ACH_ID = 1             // mgc.gfsm ✓ (1496 = « Muldo : Huitième génération »)
+        const val ACH_OBJECTIVES = 3     // mgc.gfsp  rep mga
+        // Objectif (mga) ✓ recoupé sur un objectif en cours : {gfsf=1600, gfsg=1552, gfsi=11141}
+        const val OBJ_TARGET = 1         // mga.gfsf (cible)
+        const val OBJ_CURRENT = 2        // mga.gfsg (optional ; absent = terminé)
+        const val OBJ_ID = 3             // mga.gfsi
     }
 
     /** Id de catégorie d'une requête de détail, ou null si autre message. */
@@ -52,8 +50,7 @@ object AchievementMapper {
     fun detailedAchievements(message: DecodedGameAny, dynamic: Message?, categoryId: Int?): List<Achievement>? {
         if (message.code != CODE_DETAILED) return null
         val msg = dynamic ?: return null
-        return (msg.messageList(F.DETAILED_LIST_A) + msg.messageList(F.DETAILED_LIST_B))
-            .map { toAchievement(it, categoryId) }
+        return msg.messageList(F.DETAILED_LIST).map { toAchievement(it, categoryId) }
     }
 
     /** Succès d'une liste générale / vue d'ensemble (sans catégorie), ou null si autre message. */
@@ -98,7 +95,7 @@ object AchievementMapper {
         return (getField(f) as? Number)?.toLong() ?: 0
     }
 
-    /** null si le champ optional (ex. `fthm`) est absent → objectif terminé. */
+    /** null si le champ optional (`mga.gfsg`) est absent → objectif terminé. */
     private fun Message.longOrNull(n: Int): Long? {
         val f = field(n) ?: return null
         if (f.isRepeated || !hasField(f)) return null

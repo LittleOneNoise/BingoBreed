@@ -82,7 +82,7 @@ private val AchievementOrder: Comparator<Achievement> = compareBy(
 )
 
 /**
- * Onglet Succès : succès d'élevage du joueur, alimentés par les listes détaillées `lfd`
+ * Onglet Succès : succès d'élevage du joueur, alimentés par les listes détaillées `mfn`
  * (cf. [fr.lilone.bingobreed.sniffer.parser.breeding.AchievementMapper]) et nommés via
  * [AchievementRegistry]. Sous-onglets par famille ([AchievementCategory]), masquage des succès
  * validés (activé par défaut). Tout est trié dans l'ordre du client Dofus ([AchievementOrder]).
@@ -291,11 +291,15 @@ private fun ObjectiveChips(objectives: List<AchievementObjective>, fallback: Str
 @Composable
 private fun ObjectiveChip(o: AchievementObjective, fallback: String?) {
     val done = o.completed
+    // Validé par BingoBreed à la naissance mais pas encore confirmé par le jeu (il ne repousse pas la
+    // liste des succès) : même ✓, teinte or, pour que le décalage avec l'écran de succès in-game se lise.
+    val local = o.locallyValidated && o.current != null
     val label = AchievementRegistry.objectiveText(o.id) ?: fallback ?: "#${o.id}"
     // Objectif numérique en cours (cible > 1) : on montre la progression chiffrée.
     val text = if (!done && o.target > 1) "$label ${o.current}/${o.target}" else label
-    val bg = if (done) BreedColors.feconde.copy(alpha = 0.18f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-    val fg = if (done) BreedColors.feconde else MaterialTheme.colorScheme.onSurfaceVariant
+    val accent = if (local) BreedColors.gold else BreedColors.feconde
+    val bg = if (done) accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+    val fg = if (done) accent else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         Modifier.clip(RoundedCornerShape(5.dp)).background(bg).padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -305,6 +309,10 @@ private fun ObjectiveChip(o: AchievementObjective, fallback: String?) {
             Spacer(Modifier.width(3.dp))
         }
         Text(text, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (local) {
+            Spacer(Modifier.width(3.dp))
+            Text("née ici", style = MaterialTheme.typography.labelSmall, color = fg.copy(alpha = 0.7f))
+        }
     }
 }
 

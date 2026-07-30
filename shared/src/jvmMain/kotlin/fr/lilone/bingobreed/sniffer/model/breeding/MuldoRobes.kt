@@ -217,7 +217,7 @@ data class MuldoRobe(
     val name: String,
     /** Génération 1..10. */
     val gen: Int,
-    /** Id réseau (champ feam/feap) si relevé, sinon null. */
+    /** Id réseau (`hvf.fone` / `hvd`) si relevé, sinon null. */
     val networkId: Int?,
     /** Les 2 robes parentes qui la produisent ; null pour une robe gen 1 (capturable). */
     val recipe: Pair<String, String>?,

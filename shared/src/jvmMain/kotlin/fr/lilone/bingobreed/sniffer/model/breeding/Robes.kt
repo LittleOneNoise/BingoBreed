@@ -3,8 +3,8 @@ package fr.lilone.bingobreed.sniffer.model.breeding
 /**
  * Référence des robes de **Muldo** : ids réseau → nom de robe, et nom → génération.
  *
- * ⚠️ **Un seul espace d'ids** pour la robe propre ([Mount.appearanceId], champ `feam`) ET
- * les robes des parents ([Mount.parents], champ `feap`) : un id donné désigne la même robe
+ * ⚠️ **Un seul espace d'ids** pour la robe propre ([Mount.appearanceId], champ `hvf.fone`) ET
+ * les robes des parents ([Mount.parents], sous-message `hvd`) : un id donné désigne la même robe
  * dans les deux cas (confirmé par capture systématique, ex. `115`=Roux et Doré, `120`=Ébène
  * et Amande, `98`=Turquoise dans les deux champs). La table [IDS] est donc commune.
  *
@@ -68,7 +68,7 @@ object Robes {
         GENERATIONS.flatMap { (gen, robes) -> robes.map { it to gen } }.toMap()
 
     /**
-     * id → robe (espace **commun** robe propre `feam` et robes parentales `feap`). Relevé sur
+     * id → robe (espace **commun** robe propre et robes parentales). Relevé sur
      * montures nommées d'après leur robe et sur les généalogies affichées. À compléter.
      */
     val IDS: Map<Int, String> = mapOf(

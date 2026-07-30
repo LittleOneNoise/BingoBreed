@@ -47,7 +47,7 @@ data class OwnedMount(
     val gauges: List<MountGauge> = emptyList(),
     /** Localisation (étable / enclos actif), pour guider le joueur jusqu'à la monture. */
     val location: MountLocation = MountLocation.Stable,
-    /** Vient d'être accouplée (`htq`) : jauges en reset côté jeu → ni féconde ni utilisable maintenant. */
+    /** Vient d'être accouplée (`hsp`) : jauges en reset côté jeu → ni féconde ni utilisable maintenant. */
     val consumed: Boolean = false,
     /**
      * Robes des 2 parents (= grands-parents d'un futur bébé), pour le calcul généalogique
@@ -84,7 +84,7 @@ class OwnedStock(val byRobe: Map<String, List<OwnedMount>>) {
          * Construit le stock depuis l'étable + **tous les enclos connus**, dédupliqué par uuid, robes
          * muldo connues. Prendre tous les enclos (pas seulement l'actif) garde le planificateur stable
          * quand le joueur change d'onglet d'enclos in-game. [consumed] = montures fraîchement accouplées
-         * (`htq`), exclues du calcul tant qu'un état frais ne les a pas rétablies (cf.
+         * (`hsp`), exclues du calcul tant qu'un état frais ne les a pas rétablies (cf.
          * SnifferEngine.consumedMounts).
          */
         fun from(stable: Map<String, Mount>, paddocks: Iterable<Paddock>, consumed: Set<String> = emptySet()): OwnedStock {
