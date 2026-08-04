@@ -1,3 +1,28 @@
+![](./assets/bingobreed_meme.jpg)
+
+## Interfaces
+
+![Onglet Enclos](./assets/ui_enclos.png)
+
+*Enclos — les 6 jauges de carburant en haut, et les montures présentes avec sérénité, jauges
+amour/maturité/endurance et généalogie.*
+
+![Onglet Étable](./assets/ui_etable.png)
+
+*Étable — tout le cheptel sur une seule page : robe, génération, niveau, fertilité et parents.*
+
+![Onglet Succès](./assets/ui_succes.png)
+
+*Succès d'élevage — la progression famille par famille, robe par robe ; les succès validés se
+masquent d'un clic.*
+
+![Onglet Repro](./assets/ui_repro.png)
+
+*Repro — le plan d'action : quels croisements lancer pour la robe visée, et quelle monture monter
+dans quelle jauge.*
+
+---
+
 Projet Kotlin Multiplatform ciblant le Desktop (JVM).
 
 * [/shared](./shared/src) contient le code partagé entre applications Compose Multiplatform :

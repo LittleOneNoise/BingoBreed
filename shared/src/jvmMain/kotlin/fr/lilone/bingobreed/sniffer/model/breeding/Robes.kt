@@ -3,8 +3,8 @@ package fr.lilone.bingobreed.sniffer.model.breeding
 /**
  * Référence des robes de **Muldo** : ids réseau → nom de robe, et nom → génération.
  *
- * ⚠️ **Un seul espace d'ids** pour la robe propre ([Mount.appearanceId], champ `hvf.fone`) ET
- * les robes des parents ([Mount.parents], sous-message `hvd`) : un id donné désigne la même robe
+ * ⚠️ **Un seul espace d'ids** pour la robe propre ([Mount.appearanceId], champ `hqu.fnho`) ET
+ * les robes des parents ([Mount.parents], sous-message `hqs`) : un id donné désigne la même robe
  * dans les deux cas (confirmé par capture systématique, ex. `115`=Roux et Doré, `120`=Ébène
  * et Amande, `98`=Turquoise dans les deux champs). La table [IDS] est donc commune.
  *
@@ -143,7 +143,7 @@ object Robes {
         164 to "Turquoise et Émeraude",
         165 to "Turquoise et Orchidée",
         // GEN 9 : bloc contigu 297..300, dans l'ordre de GENERATIONS[9]. 299=Azur relevé en capture ;
-        // 298 et 300 confirmés par leur généalogie (`hvd`), qui reproduit exactement leur recette —
+        // 298 et 300 confirmés par leur généalogie (`hqs`), qui reproduit exactement leur recette —
         // 298 a pour parents 146 (Prune et Pourpre) × 151 (Prune et Roux) = recette de Corail, 300 a
         // 146 × 161 (Roux et Émeraude) = recette d'Aigue-marine. 297 déduit de la place restante.
         // Sans ces ids, les montures gen 9 sont **silencieusement écartées** du stock

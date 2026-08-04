@@ -97,8 +97,8 @@ class SnifferEngine(
 
     private val _paddocks = MutableStateFlow<Map<Int?, Paddock>>(emptyMap())
     /**
-     * **Tous** les enclos vus au moins une fois, indexés par leur index `hrw` (`id`). Le jeu ne pousse
-     * l'état (`hrp`) que de l'enclos **ouvert** ; cette carte mémorise les autres pour que le
+     * **Tous** les enclos vus au moins une fois, indexés par leur index `hrl` (`id`). Le jeu ne pousse
+     * l'état (`hta`) que de l'enclos **ouvert** ; cette carte mémorise les autres pour que le
      * planificateur de repro reste **stable** quand on change d'onglet d'enclos in-game (sinon les
      * montures de l'enclos quitté perdraient leur localisation et leurs montées « en cours »). Mis à
      * jour en miroir de [activePaddock] à chaque (re)lecture/mutation d'enclos.
@@ -115,7 +115,7 @@ class SnifferEngine(
     /** Listeners de jeu actifs, indexés par host pour éviter les doublons. */
     private val gameJobs = ConcurrentHashMap<String, Job>()
 
-    /** Dernier index d'enclos sélectionné (requête `hrw`) — le contenu `hrp` ne le porte pas. */
+    /** Dernier index d'enclos sélectionné (requête `hrl`) — le contenu `hta` ne le porte pas. */
     @Volatile
     private var lastPaddockIndex: Int? = null
 

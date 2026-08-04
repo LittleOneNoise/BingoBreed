@@ -12,8 +12,8 @@ class DescriptorRegistryTest {
         val registry = DescriptorRegistry.loadFromClasspath()
         assertTrue(registry.size > 1000, "descripteur protodec attendu (>1000 messages), trouvé ${registry.size}")
 
-        // Codes observés dans le flux de jeu réel (élevage, patch 2026-07-30).
-        for (code in listOf("huz", "hso", "hrw", "hub", "htg", "hsp", "huu", "hvm", "hul", "hrk")) {
+        // Codes observés dans le flux de jeu réel (élevage, patch 2026-08-04).
+        for (code in listOf("hqx", "huz", "hua", "hun", "htr", "hqw", "hsh", "huh", "hur", "hqv", "hsm", "htu", "hsu")) {
             assertNotNull(registry.findByTypeUrl("type.ankama.com/$code"), "code '$code' introuvable")
         }
     }
