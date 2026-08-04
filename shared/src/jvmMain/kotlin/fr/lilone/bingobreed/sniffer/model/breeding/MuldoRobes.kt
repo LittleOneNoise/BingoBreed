@@ -169,6 +169,48 @@ object MuldoRobes {
 
     fun byName(name: String): MuldoRobe? = BY_NAME[name]
 
+    /**
+     * Robe d'un id d'apparence — **point d'entrée unique** à préférer à [BY_ID], qui ne connaît que
+     * la table statique. Complète celle-ci par les ids appris en cours de session
+     * ([Robes.learnRobeId]) : sans ce repli, une monture d'une génération non encore relevée est
+     * écartée du stock **et** de la validation des succès (cf. `SnifferEngine.registerBirths`).
+     */
+    fun byId(appearanceId: Int): MuldoRobe? =
+        BY_ID[appearanceId] ?: Robes.robeName(appearanceId)?.let { BY_NAME[it] }
+
+    /** True si l'id d'apparence de cette robe est connu (table statique ou appris en session). */
+    fun hasKnownId(robe: String): Boolean = Robes.hasKnownId(robe)
+
+    /**
+     * Robes qu'un croisement peut produire, d'après les **arbres** des 2 parents (robe propre +
+     * robes des grands-parents) : les robes des arbres elles-mêmes, plus l'enfant de recette de
+     * chaque paire (père, mère). C'est exactement l'espace des issues du modèle génétique
+     * ([fr.lilone.bingobreed.breeding.BreedingGenetics] : chaque couple de races distribue son poids
+     * à ses 2 membres **et** à [childOf]).
+     */
+    fun possibleChildren(fatherTree: Set<String>, motherTree: Set<String>): Set<String> = buildSet {
+        addAll(fatherTree)
+        addAll(motherTree)
+        for (a in fatherTree) for (b in motherTree) childOf(a, b)?.let { add(it) }
+    }
+
+    /**
+     * Identifie la robe d'un poulain dont l'**id d'apparence n'est pas résolu**, à partir des arbres
+     * de ses parents : parmi les issues possibles ([possibleChildren]), un id non résolu élimine
+     * toutes celles dont l'id **est** connu. S'il n'en reste qu'une, c'est elle. null si ambigu
+     * (≥ 2 candidates sans id) — on préfère renoncer que deviner, une robe mal attribuée validerait
+     * un succès à tort.
+     *
+     * [isIdKnown] est injectable pour que la règle soit vérifiable sans dépendre de l'état de
+     * [Robes.IDS] : la table est censée être complète, donc en production ce chemin ne sert que pour
+     * une génération pas encore relevée — situation impossible à reproduire en test autrement.
+     */
+    fun deduceUnknownChild(
+        fatherTree: Set<String>,
+        motherTree: Set<String>,
+        isIdKnown: (String) -> Boolean = ::hasKnownId,
+    ): String? = possibleChildren(fatherTree, motherTree).filterNot(isIdKnown).singleOrNull()
+
     /** Recette d'une robe (2 robes parentes), ou null si gen 1 / robe inconnue. */
     fun recipeOf(name: String): Pair<String, String>? = BY_NAME[name]?.recipe
 

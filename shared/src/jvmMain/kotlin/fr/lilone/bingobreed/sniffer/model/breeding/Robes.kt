@@ -9,9 +9,13 @@ package fr.lilone.bingobreed.sniffer.model.breeding
  * et Amande, `98`=Turquoise dans les deux champs). La table [IDS] est donc commune.
  *
  * [GENERATIONS] (robe → génération) en découle. L'espace d'ids est **global aux familles**
- * (dragodindes 1..66, muldos 90..171, volkornes 172..296, muldos gen 9+ après 296 — cf. Azur=299,
- * confirmé par `api.dofusdb.fr/mounts`) mais les noms courts se répètent entre familles :
- * [IDS] reste donc réservé au Muldo, les Volkornes vivent dans [VOLKORNE_IDS].
+ * (dragodindes 1..66, muldos 90..171, volkornes 172..296, muldos gen 9 en 297..300, gen 10 au-delà)
+ * mais les noms courts se répètent entre familles : [IDS] reste donc réservé au Muldo, les Volkornes
+ * vivent dans [VOLKORNE_IDS].
+ *
+ * ⚠️ `api.dofusdb.fr/mounts` s'arrête à l'id 296 (Volkorne Doré et Émeraude) : la gen 9+ du Muldo
+ * n'y figure pas. Ces ids se relèvent donc **en capture**, et un id manquant fait silencieusement
+ * disparaître la monture du planificateur — d'où le diagnostic posé par `OwnedStock.from`.
  */
 object Robes {
 
@@ -138,7 +142,71 @@ object Robes {
         163 to "Ivoire et Émeraude",
         164 to "Turquoise et Émeraude",
         165 to "Turquoise et Orchidée",
+        // GEN 9 : bloc contigu 297..300, dans l'ordre de GENERATIONS[9]. 299=Azur relevé en capture ;
+        // 298 et 300 confirmés par leur généalogie (`hvd`), qui reproduit exactement leur recette —
+        // 298 a pour parents 146 (Prune et Pourpre) × 151 (Prune et Roux) = recette de Corail, 300 a
+        // 146 × 161 (Roux et Émeraude) = recette d'Aigue-marine. 297 déduit de la place restante.
+        // Sans ces ids, les montures gen 9 sont **silencieusement écartées** du stock
+        // (`OwnedStock.from` filtre sur BY_ID) et le planner reconstruit une lignée déjà possédée.
+        297 to "Ambre",
+        298 to "Corail",
         299 to "Azur",
+        300 to "Aigue-marine",
+        // GEN 10 : bloc contigu 301..350, dans l'ordre de GENERATIONS[10] — même construction que
+        // la gen 9. Deux ancres relevées en capture verrouillent la plage : 299=Azur (gen 9, 3ᵉ) et
+        // 320=« Corail et Amande » (gen 10, 20ᵉ → 301+19), séparées de 21 rangs et toutes deux exactes.
+        // Les autres sont interpolées ; `SnifferEngine.identifyNewborn` recoupe chaque naissance contre
+        // les issues génétiquement possibles et alerte si cette table venait à être décalée.
+        301 to "Ambre et Doré",
+        302 to "Ambre et Ébène",
+        303 to "Ambre et Indigo",
+        304 to "Ambre et Pourpre",
+        305 to "Ambre et Orchidée",
+        306 to "Ambre et Amande",
+        307 to "Ambre et Roux",
+        308 to "Ambre et Ivoire",
+        309 to "Ambre et Turquoise",
+        310 to "Ambre et Émeraude",
+        311 to "Ambre et Prune",
+        312 to "Ambre et Corail",
+        313 to "Ambre et Azur",
+        314 to "Ambre et Aigue-marine",
+        315 to "Corail et Doré",
+        316 to "Corail et Ébène",
+        317 to "Corail et Indigo",
+        318 to "Corail et Pourpre",
+        319 to "Corail et Orchidée",
+        320 to "Corail et Amande",
+        321 to "Corail et Roux",
+        322 to "Corail et Ivoire",
+        323 to "Corail et Turquoise",
+        324 to "Corail et Émeraude",
+        325 to "Corail et Prune",
+        326 to "Corail et Azur",
+        327 to "Corail et Aigue-marine",
+        328 to "Azur et Doré",
+        329 to "Azur et Ébène",
+        330 to "Azur et Indigo",
+        331 to "Azur et Pourpre",
+        332 to "Azur et Orchidée",
+        333 to "Azur et Amande",
+        334 to "Azur et Roux",
+        335 to "Azur et Ivoire",
+        336 to "Azur et Turquoise",
+        337 to "Azur et Émeraude",
+        338 to "Azur et Prune",
+        339 to "Azur et Aigue-marine",
+        340 to "Aigue-marine et Doré",
+        341 to "Aigue-marine et Ébène",
+        342 to "Aigue-marine et Indigo",
+        343 to "Aigue-marine et Pourpre",
+        344 to "Aigue-marine et Orchidée",
+        345 to "Aigue-marine et Amande",
+        346 to "Aigue-marine et Roux",
+        347 to "Aigue-marine et Ivoire",
+        348 to "Aigue-marine et Turquoise",
+        349 to "Aigue-marine et Émeraude",
+        350 to "Aigue-marine et Prune",
     )
 
     /**
@@ -287,11 +355,34 @@ object Robes {
         296 to "Doré et Émeraude",
     )
 
+    /**
+     * Ids **appris à l'exécution**, en complément d'[IDS] : chaque génération de muldo ajoutée par
+     * Ankama arrive avec des ids qu'aucune source publique ne documente (DofusDB s'arrête à 296), et
+     * un id absent rend la monture invisible partout — planificateur, succès, images. Une naissance
+     * suffit à lever le doute quand la robe se déduit sans ambiguïté de la généalogie
+     * (cf. `SnifferEngine.identifyNewborn`) : on mémorise alors la correspondance pour la session.
+     *
+     * Volontairement **non persisté** : c'est un cache de déduction, pas une source de vérité. Les
+     * ids appris sont journalisés pour être promus dans [IDS] après vérification en jeu.
+     */
+    private val learnedIds = java.util.concurrent.ConcurrentHashMap<Int, String>()
+
+    /**
+     * Mémorise `id → robe`. Renvoie true si c'est une **découverte** (id encore inconnu), false s'il
+     * était déjà connu ou déjà appris — pour ne journaliser qu'une fois.
+     */
+    fun learnRobeId(id: Int, robe: String): Boolean =
+        id !in IDS && learnedIds.putIfAbsent(id, robe) == null
+
+    /** True si l'id d'apparence de cette robe est connu (table statique ou appris). */
+    fun hasKnownId(robe: String): Boolean =
+        robe in IDS.values || robe in learnedIds.values
+
     /** Nom court de la robe (sans génération), ou null si l'id est inconnu. */
-    fun robeName(id: Int): String? = IDS[id] ?: WILD_IDS[id]
+    fun robeName(id: Int): String? = IDS[id] ?: learnedIds[id] ?: WILD_IDS[id]
 
     /** Génération de la robe, ou null si robe/id inconnu (les sauvages n'en ont pas). */
-    fun robeGeneration(id: Int): Int? = IDS[id]?.let { GENERATION_OF[it] }
+    fun robeGeneration(id: Int): Int? = (IDS[id] ?: learnedIds[id])?.let { GENERATION_OF[it] }
 
     /** Libellé : « Roux et Doré (Gen 4) » si connu, sinon « #id ». */
     fun robeLabel(id: Int): String {

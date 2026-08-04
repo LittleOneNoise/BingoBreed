@@ -42,7 +42,7 @@ object ReproDump {
 
     private fun mountLine(m: Mount): String {
         val byName = Robes.robeName(m.appearanceId)
-        val byId = MuldoRobes.BY_ID[m.appearanceId]?.name
+        val byId = MuldoRobes.byId(m.appearanceId)?.name
         val gen = Robes.robeGeneration(m.appearanceId)
         val g = m.gauges.joinToString(" ") { "${gaugeCode(it.type)}=${it.value}" }
         return "app=${m.appearanceId} robe=\"${byName ?: "?"}\" byId=\"${byId ?: "NULL"}\" gen=${gen ?: "?"} " +

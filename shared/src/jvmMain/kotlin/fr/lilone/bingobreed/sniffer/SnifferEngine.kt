@@ -14,6 +14,7 @@ import fr.lilone.bingobreed.sniffer.model.breeding.Achievement
 import fr.lilone.bingobreed.sniffer.model.breeding.Fertility
 import fr.lilone.bingobreed.sniffer.model.breeding.Mount
 import fr.lilone.bingobreed.sniffer.model.breeding.MuldoRobes
+import fr.lilone.bingobreed.sniffer.model.breeding.Robes
 import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
 import fr.lilone.bingobreed.sniffer.parser.breeding.AchievementMapper
 import fr.lilone.bingobreed.sniffer.parser.breeding.PaddockMapper
@@ -302,8 +303,13 @@ class SnifferEngine(
                             // et l'état à jour des parents dans l'étable (le push complet `htg` n'arrive
                             // qu'à la 1ʳᵉ ouverture de l'élevage).
                             PaddockMapper.bredOffspring(decoded, dynamic)?.let { outcome ->
+                                // Identifier **avant** de publier : [registerBirths] peut apprendre l'id
+                                // d'apparence du poulain, et l'`update` déclenche aussitôt une
+                                // recomposition qui reconstruit le stock. Dans l'autre ordre, l'UI lit un
+                                // id encore inconnu, écarte la monture, et rien ne la fait revenir avant
+                                // le prochain rafraîchissement de l'étable.
+                                registerBirths(outcome)
                                 _stableMounts.update { it + outcome.all }
-                                registerBirths(outcome.newborns.values)
                             }
                             PaddockMapper.clonedMount(decoded, dynamic)?.let { found ->
                                 _stableMounts.update { it + found }
@@ -370,14 +376,66 @@ class SnifferEngine(
      * la viser — biais qui s'accumule sur la durée. Sans effet si la robe n'a pas d'objectif connu ou si
      * l'objectif est déjà validé.
      */
-    private fun registerBirths(newborns: Collection<Mount>) {
-        val objectives = newborns.mapNotNull { m ->
-            val robe = MuldoRobes.BY_ID[m.appearanceId]?.name ?: return@mapNotNull null
+    private fun registerBirths(outcome: PaddockMapper.BreedOutcome) {
+        val objectives = outcome.newborns.values.mapNotNull { m ->
+            val robe = identifyNewborn(m, outcome.parents.values) ?: return@mapNotNull null
             val objective = ReproTargets.objectiveIdOfRobe(robe) ?: return@mapNotNull null
             log.info("[NAISSANCE] robe « {} » → objectif {} validé côté BingoBreed", robe, objective)
             objective
         }.toSet()
         if (objectives.isNotEmpty()) _localObjectives.update { it + objectives }
+    }
+
+    /**
+     * Robe d'un nouveau-né. Cas normal : son id d'apparence est au catalogue. Sinon — génération trop
+     * récente pour [Robes.IDS], qui a déjà coûté cher (gen 9 absente ⇒ succès jamais validés et lignée
+     * replanifiée à l'infini) — on la **déduit de la généalogie**, ce que la naissance rend possible
+     * sans ambiguïté : d'après [BreedingGenetics], les robes qu'un croisement peut produire sont
+     * exactement celles des arbres des 2 parents (robe propre + grands-parents) et les enfants de
+     * recette de leurs paires. Un id non résolu élimine tous les candidats dont l'id **est** connu ;
+     * s'il n'en reste qu'un, c'est lui, et on apprend la correspondance ([Robes.learnRobeId]).
+     * Ambiguïté (≥ 2 candidats inconnus) ou ancêtre non résolu ⇒ on renonce plutôt que de deviner.
+     *
+     * Quand l'id **est** au catalogue, la généalogie sert de **contrôle** : les blocs gen 9/10 de
+     * [Robes.IDS] sont interpolés entre deux ancres de capture, et un décalage d'un rang validerait
+     * silencieusement le mauvais succès. Une robe hors des issues possibles le signale aussitôt.
+     */
+    private fun identifyNewborn(newborn: Mount, parents: Collection<Mount>): String? {
+        val known = MuldoRobes.byId(newborn.appearanceId)?.name
+        if (parents.size != 2) return known
+        // Arbre d'un parent = sa robe + celles de ses propres parents ; tout doit être résolu.
+        val trees = parents.map { p ->
+            val ancestors = (listOf(p.appearanceId) + p.parents).map { MuldoRobes.byId(it)?.name }
+            if (ancestors.any { it == null } || ancestors.isEmpty()) return known
+            ancestors.filterNotNull().toSet()
+        }
+        val possible = MuldoRobes.possibleChildren(trees[0], trees[1])
+        if (known != null) {
+            if (known !in possible) log.warn(
+                "[NAISSANCE] id d'apparence {} = « {} » d'après Robes.IDS, mais ce croisement ne peut pas " +
+                    "produire cette robe (parents {}, issues possibles {}) — la table est probablement décalée.",
+                newborn.appearanceId, known, parents.map { Robes.robeLabel(it.appearanceId) }, possible,
+            )
+            return known
+        }
+        val robe = MuldoRobes.deduceUnknownChild(trees[0], trees[1]) ?: run {
+            log.warn(
+                "[NAISSANCE] id d'apparence {} inconnu et non déductible (parents {}, issues possibles {}) — " +
+                    "succès non validé, compléter Robes.IDS.",
+                newborn.appearanceId, parents.map { Robes.robeLabel(it.appearanceId) },
+                possible.filterNot(MuldoRobes::hasKnownId),
+            )
+            return null
+        }
+        if (Robes.learnRobeId(newborn.appearanceId, robe)) {
+            log.warn(
+                "[NAISSANCE] id d'apparence {} identifié comme « {} » par déduction généalogique " +
+                    "(parents {}). Appris pour la session — à promouvoir dans Robes.IDS : {} to \"{}\",",
+                newborn.appearanceId, robe, parents.map { Robes.robeLabel(it.appearanceId) },
+                newborn.appearanceId, robe,
+            )
+        }
+        return robe
     }
 
     /**

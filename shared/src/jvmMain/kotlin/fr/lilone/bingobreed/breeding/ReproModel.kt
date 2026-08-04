@@ -5,8 +5,10 @@ import fr.lilone.bingobreed.sniffer.model.breeding.Mount
 import fr.lilone.bingobreed.sniffer.model.breeding.MountGauge
 import fr.lilone.bingobreed.sniffer.model.breeding.MuldoRobes
 import fr.lilone.bingobreed.sniffer.model.breeding.Paddock
+import fr.lilone.bingobreed.sniffer.model.breeding.Robes
 import fr.lilone.bingobreed.sniffer.model.breeding.SerenityBand
 import fr.lilone.bingobreed.sniffer.model.breeding.Sex
+import org.slf4j.LoggerFactory
 
 /**
  * Modèle du planificateur de reproduction (élevage 3.0). Types de domaine purs (sans Compose),
@@ -93,9 +95,39 @@ class OwnedStock(val byRobe: Map<String, List<OwnedMount>>) {
             // Les enclos (plus live) priment, et fixent la localisation « enclos N ».
             paddocks.forEach { p -> p.mounts.forEach { (uuid, m) -> merged[uuid] = m to MountLocation.Paddock(p.id) } }
             val byRobe = merged.values
-                .mapNotNull { (m, loc) -> MuldoRobes.BY_ID[m.appearanceId]?.let { robe -> toOwned(m, robe.name, loc, m.uuid in consumed) } }
+                .mapNotNull { (m, loc) ->
+                    val robe = MuldoRobes.byId(m.appearanceId)
+                    if (robe == null) { warnUnknownAppearance(m); return@mapNotNull null }
+                    toOwned(m, robe.name, loc, m.uuid in consumed)
+                }
                 .groupBy { it.robe }
             return OwnedStock(byRobe)
+        }
+
+        /** Ids d'apparence déjà signalés, pour ne pas répéter le diagnostic à chaque rafraîchissement. */
+        private val warnedAppearances = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+
+        /**
+         * Une monture dont l'id d'apparence est absent de [Robes.IDS] est **écartée du stock** : le
+         * planificateur ne la voit pas et peut proposer de reconstruire une lignée déjà possédée (cas
+         * vécu : Corail=298 et Aigue-marine=300 manquants → boucle sur « Prune et Pourpre »/« Prune et
+         * Roux »). On journalise donc l'id, avec la robe **déduite de la recette des parents** quand
+         * elle est connue ([MuldoRobes.childOf]) : c'est l'indice qui permet de compléter la table.
+         * Simple diagnostic, pas une inférence — un croisement A × B peut aussi rendre A ou B, donc la
+         * suggestion se vérifie en jeu avant d'être ajoutée à [Robes.IDS].
+         */
+        private fun warnUnknownAppearance(m: Mount) {
+            if (!warnedAppearances.add(m.appearanceId)) return
+            val parents = m.parents.map { MuldoRobes.byId(it)?.name ?: "#$it" }
+            val guess = m.parents.takeIf { it.size == 2 }
+                ?.let { (a, b) -> MuldoRobes.byId(a)?.name to MuldoRobes.byId(b)?.name }
+                ?.let { (a, b) -> if (a != null && b != null) MuldoRobes.childOf(a, b) else null }
+            LoggerFactory.getLogger(OwnedStock::class.java).warn(
+                "Robe inconnue pour l'id d'apparence {} (monture '{}' niv {}, parents {}) : écartée du " +
+                    "planificateur. Recette des parents → {}. Compléter Robes.IDS.",
+                m.appearanceId, m.name.orEmpty(), m.level, parents,
+                guess ?: "indéterminée",
+            )
         }
 
         private fun toOwned(m: Mount, robe: String, location: MountLocation, consumed: Boolean) = OwnedMount(
@@ -110,7 +142,7 @@ class OwnedStock(val byRobe: Map<String, List<OwnedMount>>) {
             gauges = m.gauges,
             location = location,
             consumed = consumed,
-            parents = m.parents.mapNotNull { MuldoRobes.BY_ID[it]?.name },
+            parents = m.parents.mapNotNull { MuldoRobes.byId(it)?.name },
         )
     }
 }
